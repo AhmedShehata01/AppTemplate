@@ -4,6 +4,7 @@ using System.Linq;
 using System.Security.Claims;
 using System.Text;
 using System.Threading.Tasks;
+using Kindergarten.DAL.Enum;
 using Kindergarten.DAL.Extend;
 using Microsoft.AspNetCore.Identity;
 
@@ -45,7 +46,8 @@ namespace Kindergarten.DAL.StaticData
                     UserName = adminUserName,
                     Email = adminEmail,
                     NormalizedUserName = adminUserName.ToUpper(),
-                    EmailConfirmed = true
+                    EmailConfirmed = true,
+                    UserType = UserType.SuperAdmin,
                 };
 
                 var result = await userManager.CreateAsync(adminUser, adminPassword);

@@ -1,11 +1,18 @@
 
+using System.IdentityModel.Tokens.Jwt;
+using System.Text;
+using Kindergarten.BLL.Helper;
+using Kindergarten.BLL.Mapper;
 using Kindergarten.BLL.Services.AppSecurity;
 using Kindergarten.DAL.Database;
 using Kindergarten.DAL.Extend;
 using Kindergarten.DAL.StaticData;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using NLog;
 using NLog.Web;
 
@@ -48,8 +55,47 @@ try
         options.UseSqlServer(cleanedConnectionString));
     #endregion
 
+    #region Auto mapper Service
 
+    builder.Services.AddAutoMapper(x => x.AddProfile(new DomainProfile()));
 
+    #endregion
+
+    #region Swagger
+    // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+    builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddSwaggerGen(setup =>
+    {
+
+        setup.SwaggerDoc("v1", new OpenApiInfo { Title = "KG API", Version = "v1" });
+
+        // Include 'SecurityScheme' to use JWT Authentication
+        var jwtSecurityScheme = new OpenApiSecurityScheme
+        {
+            Scheme = "bearer",
+            BearerFormat = "JWT",
+            Name = "JWT Authentication",
+            In = ParameterLocation.Header,
+            Type = SecuritySchemeType.Http,
+            Description = "Put *ONLY* your JWT Bearer token on textbox below!",
+
+            Reference = new OpenApiReference
+            {
+                Id = JwtBearerDefaults.AuthenticationScheme,
+                Type = ReferenceType.SecurityScheme
+            }
+        };
+
+        setup.AddSecurityDefinition(jwtSecurityScheme.Reference.Id, jwtSecurityScheme);
+
+        setup.AddSecurityRequirement(new OpenApiSecurityRequirement
+                {
+                    { jwtSecurityScheme, Array.Empty<string>() }
+                });
+
+    });
+
+    #endregion
 
     #region Microsoft IDentity Configuration
     builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -84,11 +130,54 @@ try
 
     #endregion
 
+    #region CORS
+
+    builder.Services.AddCors();
+
+    #endregion
+
+    #region Bind the TimeZoneSettings to appsettings.json
+    builder.Services.Configure<TimeZoneSettings>(builder.Configuration.GetSection("TimeZoneSettings"));
+
+    #endregion
+
+    #region AddScoped Services
+    //builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
+    #endregion
+
+    #region JWT Configuration
+
+    builder.Services.Configure<JWTHelper>(builder.Configuration.GetSection("JWT"));
+
+    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
+    {
+        // Configure JwtBearer authentication options
+        o.RequireHttpsMetadata = false;
+        o.SaveToken = false;
+
+        // Parameter Validation
+        o.TokenValidationParameters = new TokenValidationParameters
+        {
+            // Set validation parameters for the JWT token
+            ValidateIssuerSigningKey = true,
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidIssuer = builder.Configuration["JWT:Issuer"],
+            ValidAudience = builder.Configuration["JWT:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JWT:Key"])),
+            ClockSkew = TimeSpan.Zero
+        };
+    });
+
+    #endregion
+
     // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen();
 
     var app = builder.Build();
+
     #region Ensure roles and admin user are seeded
     using (var scope = app.Services.CreateScope())
     {
@@ -111,6 +200,13 @@ try
 
     app.UseHttpsRedirection();
 
+    app.UseCors(options => options
+        //.WithOrigins("https://localhost:7185/", "", "")
+        .AllowAnyOrigin()
+        .AllowAnyMethod()
+        .AllowAnyHeader());
+
+    app.UseAuthentication();
     app.UseAuthorization();
 
     app.MapControllers();

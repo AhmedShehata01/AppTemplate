@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Kindergarten.DAL.Enum;
 using Microsoft.AspNetCore.Identity;
 
 namespace Kindergarten.DAL.Extend
@@ -13,10 +14,13 @@ namespace Kindergarten.DAL.Extend
         {
             IsAgree = true;
             IsDeleted = false;
-            CreatedOn = DateTime.Now.ToShortDateString();
+            CreatedOn = DateTime.Now;
         }
+
+        public UserType UserType { get; set; }
+
         public bool IsAgree { get; set; }
-        public string CreatedOn { get; set; }
+        public DateTime CreatedOn { get; set; }
         public bool IsDeleted { get; set; }
     }
 }
