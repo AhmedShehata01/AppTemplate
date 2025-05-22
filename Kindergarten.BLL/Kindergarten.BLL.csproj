@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Folder Include="Helper\" />
+    <Folder Include="Mapper\" />
+    <Folder Include="Middleware\" />
+    <Folder Include="Models\" />
+    <Folder Include="Repository\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Kindergarten.DAL\Kindergarten.DAL.csproj" />
+  </ItemGroup>
+
+</Project>
