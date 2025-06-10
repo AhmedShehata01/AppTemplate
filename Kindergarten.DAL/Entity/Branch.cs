@@ -1,0 +1,46 @@
+﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Kindergarten.DAL.Entity
+{
+    [Table("Branches")]
+    public class Branch : BaseEntity
+    {
+        public int Id { get; set; }
+
+        [Required(ErrorMessage = "Arabic name is required.")]
+        [MinLength(3, ErrorMessage = "Arabic name must be at least 3 characters.")]
+        [MaxLength(50, ErrorMessage = "Arabic name must not exceed 50 characters.")]
+        public string NameAr { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "English name is required.")]
+        [MinLength(3, ErrorMessage = "English name must be at least 3 characters.")]
+        [MaxLength(50, ErrorMessage = "English name must not exceed 50 characters.")]
+        public string NameEn { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Address is required.")]
+        [MinLength(10, ErrorMessage = "Address must be at least 10 characters.")]
+        [MaxLength(100, ErrorMessage = "Address must not exceed 100 characters.")]
+        public string Address { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Phone number is required.")]
+        public string Phone { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Phone number is required.")]
+        [EmailAddress(ErrorMessage = "Invalid email address format.")]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Branch code is required.")]
+        [StringLength(8, MinimumLength = 8, ErrorMessage = "Branch code must be exactly 8 characters.")]
+        [RegularExpression(@"^BR\d{6}$", ErrorMessage = "Branch code must follow the format BR000001.")]
+        public string BranchCode { get; set; } = string.Empty;
+
+        public int KindergartenId { get; set; }
+        public KG Kindergarten { get; set; }
+    }
+}

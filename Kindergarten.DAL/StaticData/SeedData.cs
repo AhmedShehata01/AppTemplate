@@ -4,7 +4,6 @@ using System.Linq;
 using System.Security.Claims;
 using System.Text;
 using System.Threading.Tasks;
-using Kindergarten.DAL.Enum;
 using Kindergarten.DAL.Extend;
 using Microsoft.AspNetCore.Identity;
 
@@ -17,8 +16,7 @@ namespace Kindergarten.DAL.StaticData
             #region Seed Super Admin User/Role/User Claims
 
             // Seed Roles
-            var roles = new List<string> { "Super Admin", "Admin", "User" };
-
+            var roles = new List<string> { "Super Admin", "Admin", "User", "KGAdmin", "KGManager", "KGTeacher", "Parent", "KGAccountant", "KGSupervisor", "KGReceptionist" };
             foreach (var roleName in roles)
             {
                 if (!await roleManager.RoleExistsAsync(roleName))
@@ -28,7 +26,7 @@ namespace Kindergarten.DAL.StaticData
                         Name = roleName,
                         NormalizedName = roleName.ToUpper(),
                         IsActive = true,
-                        CreatedOn = DateTime.Now.ToString()
+                        CreatedOn = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
                     };
                     await roleManager.CreateAsync(role);
                 }
@@ -47,15 +45,18 @@ namespace Kindergarten.DAL.StaticData
                     Email = adminEmail,
                     NormalizedUserName = adminUserName.ToUpper(),
                     EmailConfirmed = true,
-                    UserType = UserType.SuperAdmin,
+                    // UserType = UserType.SuperAdmin,
                 };
 
                 var result = await userManager.CreateAsync(adminUser, adminPassword);
 
                 if (result.Succeeded)
                 {
-                    await userManager.AddToRoleAsync(adminUser, "Super Admin");
-
+                    var roleResult = await userManager.AddToRoleAsync(adminUser, "Super Admin");
+                    if (!roleResult.Succeeded)
+                    {
+                        throw new InvalidOperationException($"Failed to add role to admin user: {string.Join(", ", roleResult.Errors.Select(e => e.Description))}");
+                    }
                     // Adding claims to the Super Admin user
                     var claims = new List<Claim>
                     {

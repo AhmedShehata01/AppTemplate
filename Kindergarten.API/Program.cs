@@ -1,13 +1,19 @@
-
+﻿
 using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text;
 using Kindergarten.BLL.Helper;
 using Kindergarten.BLL.Mapper;
+using Kindergarten.BLL.Middleware;
+using Kindergarten.BLL.Repository;
+using Kindergarten.BLL.Services;
 using Kindergarten.BLL.Services.AppSecurity;
+using Kindergarten.BLL.Services.SendEmail;
 using Kindergarten.DAL.Database;
 using Kindergarten.DAL.Extend;
 using Kindergarten.DAL.StaticData;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -55,6 +61,37 @@ try
         options.UseSqlServer(cleanedConnectionString));
     #endregion
 
+    #region User Claims
+    builder.Services.AddAuthorization(options =>
+    {
+        options.AddPolicy("ViewRolePolicy", policy =>
+            policy.RequireAssertion(context =>
+                context.User.HasClaim(c => c.Type == "View Role" && c.Value == "true") ||
+                context.User.IsInRole("Super Admin")
+            ));
+
+        options.AddPolicy("CreateRolePolicy", policy =>
+            policy.RequireAssertion(context =>
+                context.User.HasClaim(c => c.Type == "Create Role" && c.Value == "true") ||
+                context.User.IsInRole("Super Admin")
+            ));
+
+        options.AddPolicy("EditRolePolicy", policy =>
+            policy.RequireAssertion(context =>
+                context.User.HasClaim(c => c.Type == "Edit Role" && c.Value == "true") ||
+                context.User.IsInRole("Super Admin")
+            ));
+
+        options.AddPolicy("DeleteRolePolicy", policy =>
+            policy.RequireAssertion(context =>
+                context.User.HasClaim(c => c.Type == "Delete Role" && c.Value == "true") ||
+                context.User.IsInRole("Super Admin")
+            ));
+    });
+
+
+    #endregion
+
     #region Auto mapper Service
 
     builder.Services.AddAutoMapper(x => x.AddProfile(new DomainProfile()));
@@ -97,28 +134,28 @@ try
 
     #endregion
 
-    #region Microsoft IDentity Configuration
-    builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
-                    .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme,
-                        options =>
-                        {
-                            options.LoginPath = new PathString("/Account/Login");
-                            options.AccessDeniedPath = new PathString("/Account/Login");
-                        });
+    #region Microsoft Identity Configuration
 
-    builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = false)
-        .AddRoles<ApplicationRole>()
-        .AddEntityFrameworkStores<ApplicationContext>()
-        .AddTokenProvider<DataProtectorTokenProvider<ApplicationUser>>(TokenOptions.DefaultProvider);
-    // User And Password Validations
+    // إعداد المصادقة باستخدام الـ Cookie فقط لو عندك Web UI (مش ضروري مع JWT)
+    //builder.Services.AddAuthentication(options =>
+    //{
+    //    options.DefaultAuthenticateScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+    //    options.DefaultChallengeScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+    //})
+    //.AddCookie(options =>
+    //{
+    //    options.LoginPath = new PathString("/Account/Login");
+    //    options.AccessDeniedPath = new PathString("/Account/Login");
+    //});
 
+    // إعداد الـ Identity الكامل (ApplicationUser + Roles + Token Providers)
     builder.Services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
     {
-
+        // إعدادات اسم المستخدم
         options.User.RequireUniqueEmail = true;
-        options.User.AllowedUserNameCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ ";
+        options.User.AllowedUserNameCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._@+ ";
 
-        // Default Password settings.
+        // إعدادات كلمة المرور
         options.Password.RequireDigit = true;
         options.Password.RequireLowercase = true;
         options.Password.RequireNonAlphanumeric = true;
@@ -126,9 +163,17 @@ try
         options.Password.RequiredLength = 6;
         options.Password.RequiredUniqueChars = 0;
 
-    }).AddEntityFrameworkStores<ApplicationContext>();
+        // إلغاء تأكيد البريد لو مش مطلوب
+        options.SignIn.RequireConfirmedAccount = false;
+
+    })
+    .AddEntityFrameworkStores<ApplicationContext>()
+    .AddDefaultTokenProviders();
 
     #endregion
+
+
+
 
     #region CORS
 
@@ -142,39 +187,50 @@ try
     #endregion
 
     #region AddScoped Services
-    //builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
+    builder.Services.AddScoped(typeof(IGenericRepository<,>), typeof(GenericRepository<,>));
+
+    builder.Services.AddScoped<IAuthService, AuthService>();
+    builder.Services.AddScoped<IBranchService, BranchService>();
+    builder.Services.AddScoped<IKindergartenService, KindergartenService>();
+    builder.Services.AddScoped<IKGBranchService, KGBranchService>();
+
+    builder.Services.AddScoped<IEmailService, EmailService>();
+    builder.Services.AddScoped<ICustomUsersService, CustomUsersService>();
+
+
     #endregion
 
     #region JWT Configuration
 
     builder.Services.Configure<JWTHelper>(builder.Configuration.GetSection("JWT"));
 
-    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
+    builder.Services.AddAuthentication(options =>
     {
-        // Configure JwtBearer authentication options
-        o.RequireHttpsMetadata = false;
-        o.SaveToken = false;
-
-        // Parameter Validation
-        o.TokenValidationParameters = new TokenValidationParameters
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
         {
-            // Set validation parameters for the JWT token
-            ValidateIssuerSigningKey = true,
             ValidateIssuer = true,
             ValidateAudience = true,
             ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+
             ValidIssuer = builder.Configuration["JWT:Issuer"],
             ValidAudience = builder.Configuration["JWT:Audience"],
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JWT:Key"])),
-            ClockSkew = TimeSpan.Zero
+            ClockSkew = TimeSpan.Zero,
+
+            // هنا الحل 👇👇👇
+            NameClaimType = ClaimTypes.Name, // default, but override if needed
+            RoleClaimType = ClaimTypes.Role
         };
     });
 
-    #endregion
 
-    // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-    builder.Services.AddEndpointsApiExplorer();
-    builder.Services.AddSwaggerGen();
+    #endregion
 
     var app = builder.Build();
 
@@ -197,6 +253,8 @@ try
         app.UseSwagger();
         app.UseSwaggerUI();
     }
+
+    app.UseMiddleware<ExceptionMiddleware>();
 
     app.UseHttpsRedirection();
 
