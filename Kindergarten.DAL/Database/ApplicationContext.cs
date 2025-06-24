@@ -18,6 +18,7 @@ namespace Kindergarten.DAL.Database
         public DbSet<KG> Kindergartens { get; set; }
         public DbSet<Branch> Branches { get; set; }
         public DbSet<UserBasicProfile> UserBasicProfiles { get; set; }
+        public DbSet<SidebarItem> SidebarItem { get; set; }
 
 
 

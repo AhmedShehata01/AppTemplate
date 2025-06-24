@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using AutoMapper;
 using Kindergarten.BLL.Helper;
+using Kindergarten.BLL.Models;
 using Kindergarten.BLL.Models.UsersManagementDTO;
 using Kindergarten.BLL.Services.SendEmail;
 using Kindergarten.DAL.Database;
@@ -56,7 +57,7 @@ namespace Kindergarten.BLL.Services
         {
             // 1. تحقق من صلاحية المستخدم الحالي
             var currentUser = _httpContextAccessor.HttpContext?.User;
-            if (currentUser == null || (!currentUser.IsInRole("Admin") && !currentUser.IsInRole("SuperAdmin")))
+            if (currentUser == null || (!currentUser.IsInRole("Admin") && !currentUser.IsInRole("Super Admin")))
                 throw new UnauthorizedAccessException("You are not authorized to create users.");
 
             // 2. إنشاء المستخدم
@@ -380,15 +381,78 @@ namespace Kindergarten.BLL.Services
         }
 
         // get all Users Profiles 
-        public async Task<List<GetUsersProfilesDTO>> GetAllUsersProfilesForAdminAsync()
+        public async Task<PagedResult<GetUsersProfilesDTO>> GetAllUsersProfilesForAdminAsync(PaginationFilter filter)
         {
-            var profiles = await _db.UserBasicProfiles
+            var query = _db.UserBasicProfiles
                 .Include(p => p.User)
                 .Where(p => p.IsDeleted == false && p.Status == UserStatus.pendingApproval)
+                .AsQueryable();
+
+            // 🔍 Search
+            if (!string.IsNullOrWhiteSpace(filter.SearchText))
+            {
+                var searchText = filter.SearchText.Trim().ToLower();
+                query = query.Where(p =>
+                    p.User.FullName.ToLower().Contains(searchText) ||
+                    p.User.Email.ToLower().Contains(searchText) ||
+                    p.User.CreatedOn.ToString().ToLower().Contains(searchText));
+            }
+
+            // 🔃 Sorting
+            if (!string.IsNullOrWhiteSpace(filter.SortBy))
+            {
+                var isDesc = filter.SortDirection?.ToLower() == "desc";
+
+                switch (filter.SortBy?.Trim().Replace(" ", "").ToLower())
+                {
+                    case "fullname":
+                        query = isDesc
+                            ? query.OrderByDescending(p => p.User.UserName)
+                            : query.OrderBy(p => p.User.UserName);
+                        break;
+
+                    case "primaryphone":
+                    case "phonenumber":
+                        query = isDesc
+                            ? query.OrderByDescending(p => p.User.PhoneNumber)
+                            : query.OrderBy(p => p.User.PhoneNumber);
+                        break;
+
+                    case "submittedat":
+                        query = isDesc
+                            ? query.OrderByDescending(p => p.SubmittedAt)
+                            : query.OrderBy(p => p.SubmittedAt);
+                        break;
+
+                    default:
+                        query = query.OrderByDescending(p => p.SubmittedAt); // default sort
+                        break;
+                }
+            }
+            else
+            {
+                query = query.OrderByDescending(p => p.SubmittedAt); // fallback sort
+            }
+
+            // 📊 Pagination
+            var totalCount = await query.CountAsync();
+            var items = await query
+                .Skip((filter.Page - 1) * filter.PageSize)
+                .Take(filter.PageSize)
                 .ToListAsync();
-            var result = _mapper.Map<List<GetUsersProfilesDTO>>(profiles);
-            return result;
+
+            var data = _mapper.Map<List<GetUsersProfilesDTO>>(items);
+
+            return new PagedResult<GetUsersProfilesDTO>
+            {
+                Data = data,
+                TotalCount = totalCount,
+                Page = filter.Page,
+                PageSize = filter.PageSize
+            };
         }
+
+
 
         public async Task<GetUsersProfilesDTO?> GetUserProfileByUserIdAsync(string userId)
         {
@@ -413,7 +477,7 @@ namespace Kindergarten.BLL.Services
         Task<bool> CompleteBasicProfileAsync(string userId, CompleteBasicProfileDTO dto);
         Task<UserStatus?> GetUserStatusAsync(string userId);
         Task<ActionResultDTO> ReviewUserProfileByAdminAsync(ReviewUserProfileByAdminDTO dto, string reviewedById);
-        Task<List<GetUsersProfilesDTO>> GetAllUsersProfilesForAdminAsync();
+        Task<PagedResult<GetUsersProfilesDTO>> GetAllUsersProfilesForAdminAsync(PaginationFilter filter);
         Task<GetUsersProfilesDTO?> GetUserProfileByUserIdAsync(string userId);
     }
 }

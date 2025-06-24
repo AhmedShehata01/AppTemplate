@@ -7,6 +7,7 @@ using Kindergarten.DAL.Extend;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Kindergarten.BLL.Models;
 
 namespace Kindergarten.API.Controllers
 {
@@ -89,20 +90,17 @@ namespace Kindergarten.API.Controllers
         }
 
 
-        [Authorize(Roles = "Admin,Super Admin")]
-        [HttpGet("profilesForAdmin")]
-        public async Task<ActionResult<ApiResponse<List<GetUsersProfilesDTO>>>> GetAllUserProfilesForAdmin()
+        //[HttpGet("profilesForAdmin")]
+        [HttpGet("profiles/pending")]
+        public async Task<IActionResult> GetPendingProfiles([FromQuery] PaginationFilter filter)
         {
-            var profiles = await _customUserService.GetAllUsersProfilesForAdminAsync();
-
-            var response = new ApiResponse<List<GetUsersProfilesDTO>>
+            var result = await _customUserService.GetAllUsersProfilesForAdminAsync(filter);
+            return Ok(new ApiResponse<PagedResult<GetUsersProfilesDTO>>
             {
                 Code = 200,
                 Status = "Success",
-                Result = profiles
-            };
-
-            return Ok(response);
+                Result = result
+            });
         }
 
         [Authorize]

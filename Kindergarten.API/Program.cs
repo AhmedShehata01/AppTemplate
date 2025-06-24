@@ -189,8 +189,7 @@ try
 
     builder.Services.AddScoped<IRoleManagementService, RoleManagementService>();
     builder.Services.AddScoped<ISecuredRouteService, SecuredRouteService>();
-
-
+    builder.Services.AddScoped<ISidebarService, SidebarService>();
     #endregion
 
     #region JWT Configuration

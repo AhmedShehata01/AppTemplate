@@ -1,6 +1,9 @@
-﻿using System.Net;
+﻿using System.Linq;
+using System.Net;
 using System.Security.Claims;
+using AutoMapper;
 using Kindergarten.BLL.Helper;
+using Kindergarten.BLL.Models;
 using Kindergarten.BLL.Models.UsersManagementDTO;
 using Kindergarten.BLL.Services;
 using Kindergarten.DAL.Database;
@@ -14,6 +17,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kindergarten.API.Controllers
 {
+    [Authorize(Roles = "Admin,Super Admin")]
     public class UserController : BaseController
     {
 
@@ -22,6 +26,7 @@ namespace Kindergarten.API.Controllers
         private readonly RoleManager<ApplicationRole> _roleManager;
         private readonly ApplicationContext db;
         private readonly ICustomUsersService _customUserService;
+        private readonly IMapper _mapper;
         #endregion
 
 
@@ -29,36 +34,95 @@ namespace Kindergarten.API.Controllers
         public UserController(UserManager<ApplicationUser> _userManager,
                                         RoleManager<ApplicationRole> _roleManager,
                                         ApplicationContext db,
-                                        ICustomUsersService customUserService)
+                                        ICustomUsersService customUserService,
+                                        IMapper mapper)
         {
             this._userManager = _userManager;
             this._roleManager = _roleManager;
             this.db = db;
             this._customUserService = customUserService;
+            _mapper = mapper;
         }
         #endregion
 
 
         #region Actions
-        // GET /api/user
-        [HttpGet]
-        [Authorize(Roles = "Admin,Super Admin")]
-        public IActionResult GetAllUsers()
+        [HttpGet("GetAllPaginated")]
+        public async Task<IActionResult> GetAllPaginated([FromQuery] PaginationFilter filter)
         {
-            var users = _userManager.Users.Select(u => new
+            try
             {
-                u.Id,
-                u.UserName,
-                u.Email
-            }).ToList();
+                var query = _userManager.Users.AsQueryable();
 
-            return Ok(users);
+                // 🔍 Apply Search
+                if (!string.IsNullOrWhiteSpace(filter.SearchText))
+                {
+                    var search = filter.SearchText.Trim().ToLower();
+                    query = query.Where(u =>
+                        u.UserName.ToLower().Contains(search) ||
+                        u.Email.ToLower().Contains(search)
+                    );
+                }
+
+                // 🔢 Total count before pagination
+                var totalCount = await query.CountAsync();
+
+                // 🔃 Apply Sorting
+                if (!string.IsNullOrWhiteSpace(filter.SortBy))
+                {
+                    var isDesc = filter.SortDirection?.ToLower() == "desc";
+                    switch (filter.SortBy.ToLower())
+                    {
+                        case "username":
+                            query = isDesc ? query.OrderByDescending(u => u.UserName) : query.OrderBy(u => u.UserName);
+                            break;
+                        case "email":
+                            query = isDesc ? query.OrderByDescending(u => u.Email) : query.OrderBy(u => u.Email);
+                            break;
+                        default:
+                            query = query.OrderBy(u => u.UserName);
+                            break;
+                    }
+                }
+                else
+                {
+                    query = query.OrderBy(u => u.UserName); // Default order
+                }
+
+                // 📊 Apply Pagination
+                var users = await query
+                    .Skip((filter.Page - 1) * filter.PageSize)
+                    .Take(filter.PageSize)
+                    .ToListAsync();
+
+                var result = new PagedResult<UserListDTO>
+                {
+                    Data = _mapper.Map<List<UserListDTO>>(users),
+                    TotalCount = totalCount,
+                    Page = filter.Page,
+                    PageSize = filter.PageSize
+                };
+
+                return Ok(new ApiResponse<PagedResult<UserListDTO>>
+                {
+                    Code = 200,
+                    Status = "Success",
+                    Result = result
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<string>
+                {
+                    Code = 500,
+                    Status = "Error",
+                    Result = ex.Message
+                });
+            }
         }
-
 
         // GET /api/user/{id}
         [HttpGet("{id}")]
-        [Authorize(Roles = "Admin,Super Admin")]
         public async Task<IActionResult> GetUserById(string id)
         {
             var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -77,10 +141,8 @@ namespace Kindergarten.API.Controllers
             });
         }
 
-
         // PUT /api/user/{id}
         [HttpPut("{id}")]
-        [Authorize(Roles = "Admin,Super Admin")]
         public async Task<IActionResult> UpdateUser(string id, [FromBody] ApplicationUser updatedUser)
         {
             if (id != updatedUser.Id)
@@ -101,7 +163,6 @@ namespace Kindergarten.API.Controllers
 
         // DELETE /api/user/{id}
         [HttpDelete("{id}")]
-        [Authorize(Roles = "Super Admin")]
         public async Task<IActionResult> DeleteUser(string id)
         {
             var user = await _userManager.FindByIdAsync(id);
@@ -116,7 +177,6 @@ namespace Kindergarten.API.Controllers
 
         // GET /api/roles
         [HttpGet("allroles")]
-        [Authorize(Roles = "Admin,Super Admin")]
         public IActionResult GetAllRoles()
         {
             var roles = _roleManager.Roles.Select(r => r.Name).ToList();
@@ -125,7 +185,6 @@ namespace Kindergarten.API.Controllers
 
         // GET /api/user/{id}/roles
         [HttpGet("{id}/roles")]
-        [Authorize(Roles = "Admin,Super Admin")]
         public async Task<IActionResult> GetUserRoles(string id)
         {
             var user = await _userManager.FindByIdAsync(id);
@@ -137,7 +196,6 @@ namespace Kindergarten.API.Controllers
 
         // POST /api/user/{id}/roles
         [HttpPost("{id}/roles")]
-        [Authorize(Roles = "Admin,Super Admin")]
         public async Task<IActionResult> UpdateUserRoles(string id, [FromBody] List<string> roles)
         {
             var user = await _userManager.FindByIdAsync(id);
@@ -164,7 +222,6 @@ namespace Kindergarten.API.Controllers
 
         // GET /api/claims
         [HttpGet("allclaims")]
-        [Authorize(Roles = "Admin,Super Admin")]
         public IActionResult GetAllClaims()
         {
             var claims = ClaimsStore.AllClaims
@@ -176,7 +233,6 @@ namespace Kindergarten.API.Controllers
 
         // GET /api/user/{id}/claims
         [HttpGet("{id}/claims")]
-        [Authorize(Roles = "Admin,Super Admin")]
         public async Task<IActionResult> GetUserClaims(string id)
         {
             var user = await _userManager.FindByIdAsync(id);
@@ -190,7 +246,6 @@ namespace Kindergarten.API.Controllers
 
         // POST /api/user/{id}/claims
         [HttpPost("{id}/claims")]
-        [Authorize(Roles = "Admin,Super Admin")]
         public async Task<IActionResult> UpdateUserClaims(string id, [FromBody] List<string> claims)
         {
             var user = await _userManager.FindByIdAsync(id);
@@ -223,7 +278,6 @@ namespace Kindergarten.API.Controllers
             return Ok(claimTypes);
         }
 
-        [Authorize(Roles = "Admin,Super Admin")]
         [HttpPost("create-by-admin")]
         public async Task<IActionResult> CreateUserByAdmin([FromBody] CreateUserByAdminDTO dto)
         {

@@ -16,7 +16,7 @@ namespace Kindergarten.DAL.StaticData
             #region Seed Super Admin User/Role/User Claims
 
             // Seed Roles
-            var roles = new List<string> { "Super Admin", "Admin", "User", "KGAdmin", "KGManager", "KGTeacher", "Parent", "KGAccountant", "KGSupervisor", "KGReceptionist" };
+            var roles = new List<string> { "Super Admin", "Admin", "User" };
             foreach (var roleName in roles)
             {
                 if (!await roleManager.RoleExistsAsync(roleName))

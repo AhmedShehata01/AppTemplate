@@ -69,6 +69,7 @@ namespace Kindergarten.BLL.Mapper
             CreateMap<UserBasicProfile, CompleteBasicProfileDTO>();
             CreateMap<GetUsersProfilesDTO, UserBasicProfile>().ReverseMap();
 
+            CreateMap<ApplicationUser, UserListDTO>();
             #endregion
 
             #region DRBRA Mappings
@@ -119,6 +120,14 @@ namespace Kindergarten.BLL.Mapper
                     src.RoleSecuredRoutes.Select(rr => rr.SecuredRoute.BasePath).ToList()
                 ));
 
+            #endregion
+
+            #region Sidebar Items and sub items 
+            CreateMap<SidebarItem, SidebarItemDTO>()
+                .ForMember(dest => dest.Children, opt => opt.MapFrom(src => src.Children.OrderBy(c => c.Order)));
+
+            CreateMap<CreateSidebarItemDTO, SidebarItem>();
+            CreateMap<UpdateSidebarItemDTO, SidebarItem>();
             #endregion
 
         }
