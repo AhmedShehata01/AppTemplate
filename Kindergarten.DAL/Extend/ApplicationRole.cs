@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Kindergarten.DAL.Entity.DRBRA;
 using Microsoft.AspNetCore.Identity;
 
 namespace Kindergarten.DAL.Extend
@@ -21,5 +22,7 @@ namespace Kindergarten.DAL.Extend
         public bool IsExternal { get; set; }
         public string CreatedOn { get; set; }
         public bool IsDeleted { get; set; }
+        public ICollection<RoleSecuredRoute> RoleSecuredRoutes { get; set; }
+
     }
 }

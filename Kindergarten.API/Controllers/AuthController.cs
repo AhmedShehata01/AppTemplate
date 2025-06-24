@@ -403,7 +403,7 @@ namespace Kindergarten.API.Controllers
 
             // الحصول على الأدوار وتوليد التوكن
             var roles = await _userManager.GetRolesAsync(user) ?? new List<string>();
-            var token = _authService.GenerateJwtToken(user, roles);
+            var token = await _authService.GenerateJwtTokenAsync(user, roles);
 
             return Ok(new ApiResponse<string>
             {

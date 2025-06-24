@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Kindergarten.DAL.Entity;
+using Kindergarten.DAL.Entity.DRBRA;
 using Kindergarten.DAL.Extend;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -18,8 +19,18 @@ namespace Kindergarten.DAL.Database
         public DbSet<Branch> Branches { get; set; }
         public DbSet<UserBasicProfile> UserBasicProfiles { get; set; }
 
+
+
+        #region DRBRA
+        public DbSet<SecuredRoute> SecuredRoutes { get; set; }
+        public DbSet<RoleSecuredRoute> RoleSecuredRoutes { get; set; }
+        #endregion
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            modelBuilder.Entity<RoleSecuredRoute>()
+            .HasIndex(r => new { r.SecuredRouteId, r.RoleId })
+            .IsUnique();
 
             // إعداد فهرس فريد على كود الفرع
             modelBuilder.Entity<Branch>()

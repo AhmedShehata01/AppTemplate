@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Google.Apis.Auth;
 using Kindergarten.BLL.Helper;
 using Kindergarten.BLL.Models.Auth;
+using Kindergarten.DAL.Database;
 using Kindergarten.DAL.Extend;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -22,18 +23,18 @@ namespace Kindergarten.BLL.Services
         #region Prop
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IConfiguration _config;
-
-
+        private readonly ApplicationContext _context;
         private readonly string _googleClientId;
         private readonly string _facebookAppId;
         private readonly string _facebookAppSecret;
         #endregion
 
         #region CTOR
-        public AuthService(UserManager<ApplicationUser> userManager, IConfiguration config)
+        public AuthService(UserManager<ApplicationUser> userManager, IConfiguration config, ApplicationContext context)
         {
             _userManager = userManager;
             _config = config;
+            _context = context;
 
             // قراءة القيم من ملف appsettings.json
             _googleClientId = _config["Google:ClientId"];
@@ -78,12 +79,12 @@ namespace Kindergarten.BLL.Services
             var roles = await _userManager.GetRolesAsync(user);
 
             // Generate JWT using the new method
-            var jwtToken = GenerateJwtToken(user, roles);
+            var jwtToken = await GenerateJwtTokenAsync(user, roles);
 
             return new ApiResponse<string> { Code = 200, Status = "Success", Result = jwtToken };
         }
 
-        public string GenerateJwtToken(ApplicationUser user, IList<string> roles)
+        public async Task<string> GenerateJwtTokenAsync(ApplicationUser user, IList<string> roles)
         {
             var tokenHandler = new JwtSecurityTokenHandler();
             var key = Encoding.UTF8.GetBytes(_config["JWT:Key"]);
@@ -93,19 +94,30 @@ namespace Kindergarten.BLL.Services
                 new Claim(ClaimTypes.NameIdentifier, user.Id),
                 new Claim(ClaimTypes.Name, user.UserName),
                 new Claim(ClaimTypes.Email, user.Email ?? ""),
-                // new Claim("UserType", user.UserType.ToString())
-                // إضافة IsAgree كـ Claim نصي (true / false)
                 new Claim("IsAgree", user.IsAgree ? "true" : "false")
             };
-            // ✅ فقط أضف Claim "IsFirstLogin" إذا كانت true
+
             if (user.IsFirstLogin)
             {
                 claims.Add(new Claim("IsFirstLogin", "true"));
             }
 
+            // ✅ إضافة Roles
             foreach (var role in roles)
             {
                 claims.Add(new Claim(ClaimTypes.Role, role));
+            }
+
+            // ✅ إضافة Secured Routes حسب صلاحيات المستخدم
+            var securedRoutes = await _context.RoleSecuredRoutes
+                .Where(r => roles.Contains(r.Role.Name))
+                .Select(r => r.SecuredRoute.BasePath)
+                .Distinct()
+                .ToListAsync();
+
+            foreach (var route in securedRoutes)
+            {
+                claims.Add(new Claim("SecuredRoute", route));
             }
 
             var tokenDescriptor = new SecurityTokenDescriptor
@@ -120,6 +132,7 @@ namespace Kindergarten.BLL.Services
             var token = tokenHandler.CreateToken(tokenDescriptor);
             return tokenHandler.WriteToken(token);
         }
+
 
         public async Task<ApiResponse<string>> ChangePasswordAsync(string userId, ChangePasswordDTO model)
         {
@@ -257,7 +270,7 @@ namespace Kindergarten.BLL.Services
 
             var roles = await _userManager.GetRolesAsync(user);
 
-            var token = GenerateJwtToken(user, roles);
+            var token = await GenerateJwtTokenAsync(user, roles);
 
             return new AuthResponseDto
             {
@@ -284,7 +297,7 @@ namespace Kindergarten.BLL.Services
     {
         Task<ApiResponse<string>> RegisterAsync(RegisterDTO model);
         Task<ApiResponse<string>> LoginAsync(LoginDTO model);
-        string GenerateJwtToken(ApplicationUser user, IList<string> roles);
+        Task<string> GenerateJwtTokenAsync(ApplicationUser user, IList<string> roles);
         Task<ApiResponse<string>> ChangePasswordAsync(string userId, ChangePasswordDTO model);
 
 
