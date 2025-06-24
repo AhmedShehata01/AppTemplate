@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using Kindergarten.BLL.Helper;
+using Kindergarten.BLL.Models;
 using Kindergarten.BLL.Models.BranchDTO;
 using Kindergarten.BLL.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -23,25 +24,26 @@ namespace Kindergarten.API.Controllers
 
         #region Actions
         [HttpGet("GetAll")]
-        public async Task<IActionResult> GetAllBranches()
+        public async Task<IActionResult> GetAllBranches([FromQuery] PaginationFilter filter)
         {
             try
             {
-                var branches = await _branchService.GetAllBranchesAsync();
-                return Ok(new ApiResponse<IEnumerable<BranchDTO>>
+                var result = await _branchService.GetAllBranchesAsync(filter);
+
+                return Ok(new ApiResponse<PagedResult<BranchDTO>>
                 {
-                    Code = (int)HttpStatusCode.OK,
+                    Code = 200,
                     Status = "Success",
-                    Result = branches
+                    Result = result
                 });
             }
             catch (Exception ex)
             {
-                return StatusCode((int)HttpStatusCode.InternalServerError, new ApiResponse<string>
+                return StatusCode(500, new ApiResponse<string>
                 {
-                    Code = (int)HttpStatusCode.InternalServerError,
+                    Code = 500,
                     Status = "Error",
-                    Result = ex.Message
+                    Result = $"An error occurred while retrieving branches: {ex.Message}"
                 });
             }
         }
@@ -52,33 +54,36 @@ namespace Kindergarten.API.Controllers
             try
             {
                 var branch = await _branchService.GetBranchByIdAsync(id);
-                if (branch == null)
+
+                if (branch is null)
                 {
                     return NotFound(new ApiResponse<string>
                     {
-                        Code = (int)HttpStatusCode.NotFound,
-                        Status = "Error",
-                        Result = $"Branch with ID {id} not found."
+                        Code = 404,
+                        Status = "NotFound",
+                        Result = $"Branch with ID {id} was not found."
                     });
                 }
 
                 return Ok(new ApiResponse<BranchDTO>
                 {
-                    Code = (int)HttpStatusCode.OK,
+                    Code = 200,
                     Status = "Success",
                     Result = branch
                 });
             }
             catch (Exception ex)
             {
-                return StatusCode((int)HttpStatusCode.InternalServerError, new ApiResponse<string>
+                return StatusCode(500, new ApiResponse<string>
                 {
-                    Code = (int)HttpStatusCode.InternalServerError,
+                    Code = 500,
                     Status = "Error",
-                    Result = ex.Message
+                    Result = $"An error occurred while retrieving the branch: {ex.Message}"
                 });
             }
         }
+
+
 
         [HttpPost("Create")]
         public async Task<IActionResult> CreateBranch([FromBody] BranchCreateDTO branchCreateDto)
@@ -89,29 +94,33 @@ namespace Kindergarten.API.Controllers
                 {
                     return BadRequest(new ApiResponse<string>
                     {
-                        Code = (int)HttpStatusCode.BadRequest,
+                        Code = 400,
                         Status = "Error",
-                        Result = "Invalid data."
+                        Result = "Request body cannot be null."
                     });
                 }
 
                 if (!ModelState.IsValid)
                 {
-                    var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+
                     return BadRequest(new ApiResponse<object>
                     {
-                        Code = (int)HttpStatusCode.BadRequest,
+                        Code = 400,
                         Status = "Validation Error",
                         Result = errors
                     });
                 }
 
-                var CreatedBy = User.Identity?.Name ?? "Unknown";
-                var createdBranch = await _branchService.CreateBranchAsync(branchCreateDto, CreatedBy);
+                var createdBy = User.Identity?.Name ?? "Unknown";
+                var createdBranch = await _branchService.CreateBranchAsync(branchCreateDto, createdBy);
 
-                var response = new ApiResponse<BranchDTO>  // هنا نوع الـ DTO الصحيح
+                var response = new ApiResponse<BranchDTO>
                 {
-                    Code = (int)HttpStatusCode.Created,
+                    Code = 201,
                     Status = "Success",
                     Result = createdBranch
                 };
@@ -120,58 +129,76 @@ namespace Kindergarten.API.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode((int)HttpStatusCode.InternalServerError, new ApiResponse<string>
+                return StatusCode(500, new ApiResponse<string>
                 {
-                    Code = (int)HttpStatusCode.InternalServerError,
+                    Code = 500,
                     Status = "Error",
-                    Result = ex.Message
+                    Result = $"An error occurred while creating the branch: {ex.Message}"
                 });
             }
         }
+
 
         [HttpPut("Update")]
         public async Task<IActionResult> UpdateBranch([FromBody] BranchUpdateDTO branchUpdateDto)
         {
-            if (branchUpdateDto == null)
+            try
             {
-                return BadRequest(new ApiResponse<string>
+                if (branchUpdateDto == null)
                 {
-                    Code = (int)HttpStatusCode.BadRequest,
+                    return BadRequest(new ApiResponse<string>
+                    {
+                        Code = 400,
+                        Status = "Error",
+                        Result = "Request body cannot be null."
+                    });
+                }
+
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState.Values
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+
+                    return BadRequest(new ApiResponse<object>
+                    {
+                        Code = 400,
+                        Status = "Validation Error",
+                        Result = errors
+                    });
+                }
+                var createdBy = User.Identity?.Name ?? "Unknown";
+
+                var updatedBranch = await _branchService.UpdateBranchAsync(branchUpdateDto, createdBy);
+                if (updatedBranch == null)
+                {
+                    return NotFound(new ApiResponse<string>
+                    {
+                        Code = 404,
+                        Status = "Error",
+                        Result = $"Branch with ID {branchUpdateDto.Id} was not found."
+                    });
+                }
+
+                return Ok(new ApiResponse<BranchDTO>
+                {
+                    Code = 200,
+                    Status = "Success",
+                    Result = updatedBranch
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<string>
+                {
+                    Code = 500,
                     Status = "Error",
-                    Result = "Invalid data."
+                    Result = $"An error occurred while updating the branch: {ex.Message}"
                 });
             }
-
-            if (!ModelState.IsValid)
-            {
-                var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
-                return BadRequest(new ApiResponse<object>
-                {
-                    Code = (int)HttpStatusCode.BadRequest,
-                    Status = "Validation Error",
-                    Result = errors
-                });
-            }
-
-            var updatedBranch = await _branchService.UpdateBranchAsync(branchUpdateDto);
-            if (updatedBranch == null)
-            {
-                return NotFound(new ApiResponse<string>
-                {
-                    Code = (int)HttpStatusCode.NotFound,
-                    Status = "Error",
-                    Result = $"Branch with ID {branchUpdateDto.Id} not found."
-                });
-            }
-
-            var response = new ApiResponse<BranchDTO>
-            {
-                Code = (int)HttpStatusCode.OK,
-                Status = "Success",
-                Result = updatedBranch
-            };
-            return Ok(response);
         }
+
 
         [HttpDelete("Delete/{id}")]
         public async Task<IActionResult> DeleteBranch(int id)
@@ -179,33 +206,35 @@ namespace Kindergarten.API.Controllers
             try
             {
                 var success = await _branchService.DeleteBranchAsync(id);
+
                 if (!success)
                 {
                     return NotFound(new ApiResponse<string>
                     {
-                        Code = (int)HttpStatusCode.NotFound,
+                        Code = 404,
                         Status = "Error",
-                        Result = $"Branch with ID {id} not found."
+                        Result = $"Branch with ID {id} was not found."
                     });
                 }
 
                 return Ok(new ApiResponse<string>
                 {
-                    Code = (int)HttpStatusCode.OK,
+                    Code = 200,
                     Status = "Success",
-                    Result = "Branch deleted successfully."
+                    Result = "Branch has been permanently deleted."
                 });
             }
             catch (Exception ex)
             {
-                return StatusCode((int)HttpStatusCode.InternalServerError, new ApiResponse<string>
+                return StatusCode(500, new ApiResponse<string>
                 {
-                    Code = (int)HttpStatusCode.InternalServerError,
+                    Code = 500,
                     Status = "Error",
-                    Result = ex.Message
+                    Result = $"An error occurred while deleting the branch: {ex.Message}"
                 });
             }
         }
+
 
         [HttpPut("SoftDelete/{id}")]
         public async Task<IActionResult> SoftDeleteBranch(int id)
@@ -213,33 +242,35 @@ namespace Kindergarten.API.Controllers
             try
             {
                 var success = await _branchService.SoftDeleteBranchAsync(id);
+
                 if (!success)
                 {
                     return NotFound(new ApiResponse<string>
                     {
-                        Code = (int)HttpStatusCode.NotFound,
+                        Code = 404,
                         Status = "Error",
-                        Result = $"Branch with ID {id} not found."
+                        Result = $"Branch with ID {id} was not found."
                     });
                 }
 
                 return Ok(new ApiResponse<string>
                 {
-                    Code = (int)HttpStatusCode.OK,
+                    Code = 200,
                     Status = "Success",
-                    Result = "Branch soft deleted successfully."
+                    Result = "Branch has been soft deleted successfully."
                 });
             }
             catch (Exception ex)
             {
-                return StatusCode((int)HttpStatusCode.InternalServerError, new ApiResponse<string>
+                return StatusCode(500, new ApiResponse<string>
                 {
-                    Code = (int)HttpStatusCode.InternalServerError,
+                    Code = 500,
                     Status = "Error",
-                    Result = ex.Message
+                    Result = $"An error occurred while performing soft delete: {ex.Message}"
                 });
             }
         }
+
         #endregion
 
     }

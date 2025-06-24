@@ -1,9 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Text;
 using System.Threading.Tasks;
 using AutoMapper;
+using Kindergarten.BLL.Extensions;
+using Kindergarten.BLL.Models;
 using Kindergarten.BLL.Models.BranchDTO;
 using Kindergarten.BLL.Repository;
 using Kindergarten.DAL.Database;
@@ -14,74 +17,88 @@ namespace Kindergarten.BLL.Services
 {
     public class BranchService : IBranchService
     {
-        #region Prop
+        #region Props
         private readonly IGenericRepository<Branch, int> _branchRepository;
         private readonly IMapper _mapper;
-        public ApplicationContext _db { get; }
+        private readonly ApplicationContext _db;
         #endregion
 
         #region CTOR
-        public BranchService(ApplicationContext db, IGenericRepository<Branch, int> branchRepository, IMapper mapper)
+        public BranchService(IGenericRepository<Branch, int> branchRepository, IMapper mapper, ApplicationContext db)
         {
-            _db = db;
             _branchRepository = branchRepository;
             _mapper = mapper;
+            _db = db;
         }
         #endregion
 
         #region Actions
-        public async Task<IEnumerable<BranchDTO>> GetAllBranchesAsync()
+        public async Task<PagedResult<BranchDTO>> GetAllBranchesAsync(PaginationFilter filter)
         {
-            var branches = await _branchRepository.GetAsync();
-            return _mapper.Map<IEnumerable<BranchDTO>>(branches);
+            Expression<Func<Branch, bool>> where = b =>
+                b.IsDeleted == false &&
+                (string.IsNullOrEmpty(filter.SearchText) || b.NameEn.Contains(filter.SearchText));
+
+            Func<IQueryable<Branch>, IOrderedQueryable<Branch>>? orderBy = query =>
+                query.ApplySorting(filter.SortBy, filter.SortDirection);
+
+            var result = await _branchRepository.GetAsync(
+                filter: where,
+                page: filter.Page,
+                pageSize: filter.PageSize,
+                orderBy: orderBy,
+                noTrack: true
+            );
+
+            var totalCount = await _branchRepository.CountAsync(where);
+
+            return new PagedResult<BranchDTO>
+            {
+                Data = _mapper.Map<List<BranchDTO>>(result),
+                TotalCount = totalCount,
+                Page = filter.Page,
+                PageSize = filter.PageSize
+            };
         }
 
-        public async Task<BranchDTO> GetBranchByIdAsync(int id)
+        public async Task<BranchDTO?> GetBranchByIdAsync(int id)
         {
             var branch = await _branchRepository.GetByIdAsync(id);
-            return _mapper.Map<BranchDTO>(branch);
+            return branch == null ? null : _mapper.Map<BranchDTO>(branch);
         }
 
-        public async Task<BranchDTO> CreateBranchAsync(BranchCreateDTO branchCreateDto, string createdBy)
+        public async Task<BranchDTO> CreateBranchAsync(BranchCreateDTO dto, string createdBy)
         {
-            var branchEntity = _mapper.Map<Branch>(branchCreateDto);
-            branchEntity.CreatedBy = createdBy;
+            if (dto == null)
+                throw new ArgumentNullException(nameof(dto));
 
-            // Generate unique BranchCode
-            branchEntity.BranchCode = await GenerateBranchCodeAsync();
+            var branch = _mapper.Map<Branch>(dto);
+            branch.CreatedBy = createdBy;
+            branch.CreatedOn = DateTime.UtcNow;
+            branch.BranchCode = await GenerateBranchCodeAsync();
 
-            var createdEntity = await _branchRepository.AddAsync(branchEntity);
-
-            // خذ الـ Entity المحفوظ وحوّله لـ BranchDTO (الذي يحتوي عادةً Id وغيره)
-            return _mapper.Map<BranchDTO>(createdEntity);
+            var result = await _branchRepository.AddAsync(branch);
+            return _mapper.Map<BranchDTO>(result);
         }
 
-
-
-
-        public async Task<BranchDTO> UpdateBranchAsync(BranchUpdateDTO branchUpdateDto)
+        public async Task<BranchDTO?> UpdateBranchAsync(BranchUpdateDTO dto, string updatedBy)
         {
-            var existingBranch = await _branchRepository.GetByIdAsync(branchUpdateDto.Id);
+            var existingBranch = await _db.Branches.FirstOrDefaultAsync(b => b.Id == dto.Id);
             if (existingBranch == null)
                 return null;
 
-            // خريطة بيانات التحديث إلى الكيان
-            _mapper.Map(branchUpdateDto, existingBranch);
+            _mapper.Map(dto, existingBranch);
+            existingBranch.UpdatedBy = updatedBy;
+            existingBranch.UpdatedOn = DateTime.UtcNow;
 
-            // احفظ التغييرات (UpdateAsync لا يُعيد شيئًا)
             await _branchRepository.UpdateAsync(existingBranch);
-
-            // استخدم existingBranch بعد الحفظ
             return _mapper.Map<BranchDTO>(existingBranch);
         }
 
-
-
         public async Task<bool> DeleteBranchAsync(int id)
         {
-            var existingBranch = await _branchRepository.GetByIdAsync(id);
-            if (existingBranch == null)
-                return false;
+            var branch = await _branchRepository.GetByIdAsync(id);
+            if (branch == null) return false;
 
             await _branchRepository.DeleteAsync(id);
             return true;
@@ -89,9 +106,8 @@ namespace Kindergarten.BLL.Services
 
         public async Task<bool> SoftDeleteBranchAsync(int id)
         {
-            var existingBranch = await _branchRepository.GetByIdAsync(id);
-            if (existingBranch == null)
-                return false;
+            var branch = await _branchRepository.GetByIdAsync(id);
+            if (branch == null) return false;
 
             await _branchRepository.SoftDeleteAsync(id);
             return true;
@@ -99,41 +115,14 @@ namespace Kindergarten.BLL.Services
 
         public async Task<List<BranchDTO>> GetBranchesByKindergartenIdAsync(int kindergartenId)
         {
-            var branches = await _db.Branches
-                .Where(b => b.KindergartenId == kindergartenId)
-                .ToListAsync();
-
+            var branches = await _branchRepository.GetAsync(
+                filter: b => b.KindergartenId == kindergartenId,
+                noTrack: true
+            );
             return _mapper.Map<List<BranchDTO>>(branches);
         }
 
 
-        // New unified method implementation
-        public async Task<BranchDTO> CreateOrUpdateBranchAsync(BranchUpdateDTO branchDto, string createdBy)
-        {
-            if (branchDto == null)
-                throw new ArgumentNullException(nameof(branchDto));
-
-            // Create new branch
-            if (branchDto.Id == 0)
-            {
-                // Map to Branch entity
-                var entity = _mapper.Map<Branch>(branchDto);
-                entity.CreatedBy = createdBy;
-                entity.BranchCode = await GenerateBranchCodeAsync();
-
-                var created = await _branchRepository.AddAsync(entity);
-                return _mapper.Map<BranchDTO>(created);
-            }
-
-            // Update existing branch
-            var existing = await _branchRepository.GetByIdAsync(branchDto.Id);
-            if (existing == null)
-                return null;
-
-            _mapper.Map(branchDto, existing);
-            await _branchRepository.UpdateAsync(existing);
-            return _mapper.Map<BranchDTO>(existing);
-        }
         #endregion
 
         #region Functions
@@ -177,16 +166,13 @@ namespace Kindergarten.BLL.Services
 
     public interface IBranchService
     {
-        Task<IEnumerable<BranchDTO>> GetAllBranchesAsync();
-        Task<BranchDTO> GetBranchByIdAsync(int id);
-        Task<BranchDTO> CreateBranchAsync(BranchCreateDTO branchCreateDto, string createdBy);
-        Task<BranchDTO> UpdateBranchAsync(BranchUpdateDTO branchUpdateDto);
+        Task<PagedResult<BranchDTO>> GetAllBranchesAsync(PaginationFilter filter);
+        Task<BranchDTO?> GetBranchByIdAsync(int id);
+        Task<BranchDTO> CreateBranchAsync(BranchCreateDTO dto, string createdBy);
+        Task<BranchDTO?> UpdateBranchAsync(BranchUpdateDTO dto, string createdBy);
         Task<bool> DeleteBranchAsync(int id);
         Task<bool> SoftDeleteBranchAsync(int id);
         Task<string> GenerateBranchCodeAsync();
         Task<List<BranchDTO>> GetBranchesByKindergartenIdAsync(int kindergartenId);
-
-        // New unified method
-        Task<BranchDTO> CreateOrUpdateBranchAsync(BranchUpdateDTO branchDto, string createdBy);
     }
 }

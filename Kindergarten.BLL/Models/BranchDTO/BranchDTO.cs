@@ -12,30 +12,92 @@ namespace Kindergarten.BLL.Models.BranchDTO
         public int Id { get; set; }
 
         [Required(ErrorMessage = "Arabic name is required.")]
-        [MinLength(3, ErrorMessage = "Arabic name must be at least 3 characters.")]
-        [MaxLength(50, ErrorMessage = "Arabic name must not exceed 50 characters.")]
-        public string NameAr { get; set; } = string.Empty;
+        [MinLength(3)]
+        [MaxLength(50)]
+        public string NameAr { get; set; }
 
         [Required(ErrorMessage = "English name is required.")]
-        [MinLength(3, ErrorMessage = "English name must be at least 3 characters.")]
-        [MaxLength(50, ErrorMessage = "English name must not exceed 50 characters.")]
-        public string NameEn { get; set; } = string.Empty;
+        [MinLength(3)]
+        [MaxLength(50)]
+        public string NameEn { get; set; }
 
         [Required(ErrorMessage = "Address is required.")]
-        [MinLength(10, ErrorMessage = "Address must be at least 10 characters.")]
-        [MaxLength(100, ErrorMessage = "Address must not exceed 100 characters.")]
-        public string Address { get; set; } = string.Empty;
+        [MinLength(10)]
+        [MaxLength(100)]
+        public string Address { get; set; }
 
         [Required(ErrorMessage = "Phone number is required.")]
-        public string Phone { get; set; } = string.Empty;
+        public string Phone { get; set; }
 
-        [Required(ErrorMessage = "Email number is required.")]
-        [EmailAddress(ErrorMessage = "Invalid Email address format.")]
-        public string Email { get; set; } = string.Empty;
+        [Required(ErrorMessage = "Phone number is required.")]
+        [EmailAddress(ErrorMessage = "Invalid email address format.")]
+        public string Email { get; set; }
 
-        [Required(ErrorMessage = "Branch code is required.")]
-        [StringLength(8, MinimumLength = 8, ErrorMessage = "Branch code must be exactly 8 characters.")]
-        [RegularExpression(@"^BR\d{6}$", ErrorMessage = "Branch code must follow the format BR000001.")]
+        public string BranchCode { get; set; }
+        public bool? IsDeleted { get; set; }
+        public DateTime? CreatedOn { get; set; }
+        public string? CreatedBy { get; set; }
+        public int KindergartenId { get; set; }
+    }
+
+    public class BranchCreateDTO : BaseEntityDTO
+    {
+        public int Id { get; set; }
+
+        [Required(ErrorMessage = "Arabic name is required.")]
+        [MinLength(3)]
+        [MaxLength(50)]
+        public string NameAr { get; set; }
+
+        [Required(ErrorMessage = "English name is required.")]
+        [MinLength(3)]
+        [MaxLength(50)]
+        public string NameEn { get; set; }
+
+        [Required(ErrorMessage = "Address is required.")]
+        [MinLength(10)]
+        [MaxLength(100)]
+        public string Address { get; set; }
+
+        [Required(ErrorMessage = "Phone number is required.")]
+        public string Phone { get; set; }
+
+        [Required(ErrorMessage = "Phone number is required.")]
+        [EmailAddress(ErrorMessage = "Invalid email address format.")]
+        public string Email { get; set; }
+
+        [Required(ErrorMessage = "KindergartenId is required.")]
+        public int KindergartenId { get; set; }
+    }
+
+    public class BranchUpdateDTO : BaseEntityDTO
+    {
+        public int Id { get; set; }
+
+        [Required(ErrorMessage = "Arabic name is required.")]
+        [MinLength(3)]
+        [MaxLength(50)]
+        public string NameAr { get; set; }
+
+        [Required(ErrorMessage = "English name is required.")]
+        [MinLength(3)]
+        [MaxLength(50)]
+        public string NameEn { get; set; }
+
+        [Required(ErrorMessage = "Address is required.")]
+        [MinLength(10)]
+        [MaxLength(100)]
+        public string Address { get; set; }
+
+        [Required(ErrorMessage = "Phone number is required.")]
+        public string Phone { get; set; }
+
+        [Required(ErrorMessage = "Email is required.")]
+        [EmailAddress(ErrorMessage = "Invalid email address format.")]
+        public string Email { get; set; }
+
         public string BranchCode { get; set; } = string.Empty;
+
+        public int? KindergartenId { get; set; } // optional in update context
     }
 }

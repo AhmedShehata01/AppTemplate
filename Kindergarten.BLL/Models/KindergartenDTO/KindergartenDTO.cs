@@ -8,31 +8,75 @@ using Kindergarten.BLL.Models.BranchDTO;
 
 namespace Kindergarten.BLL.Models.KindergartenDTO
 {
-    public class KindergartenDTO
+    public class KindergartenDTO : BaseEntityDTO
     {
         public int Id { get; set; }
 
         [Required(ErrorMessage = "Arabic name is required.")]
-        [MinLength(3, ErrorMessage = "Arabic name must be at least 3 characters.")]
-        [MaxLength(50, ErrorMessage = "Arabic name must not exceed 50 characters.")]
-        public string NameAr { get; set; } = string.Empty;
+        [MinLength(3)]
+        [MaxLength(50)]
+        public string NameAr { get; set; }
 
         [Required(ErrorMessage = "English name is required.")]
-        [MinLength(3, ErrorMessage = "English name must be at least 3 characters.")]
-        [MaxLength(50, ErrorMessage = "English name must not exceed 50 characters.")]
-        public string NameEn { get; set; } = string.Empty;
+        [MinLength(3)]
+        [MaxLength(50)]
+        public string NameEn { get; set; }
 
-        [Required(ErrorMessage = "Kindergarten code is required.")]
-        [StringLength(6, MinimumLength = 6, ErrorMessage = "Kindergarten code must be exactly 6 characters.")]
-        [RegularExpression(@"^KG\d{4}$", ErrorMessage = "Kindergarten code must follow the format KG0001.")]
-        public string KGCode { get; set; } = string.Empty;
+        public string KGCode { get; set; }
 
         [Required(ErrorMessage = "Address is required.")]
-        [MinLength(10, ErrorMessage = "Address must be at least 10 characters.")]
-        [MaxLength(100, ErrorMessage = "Address must not exceed 100 characters.")]
-        public string Address { get; set; } = string.Empty;
+        [MinLength(10)]
+        [MaxLength(100)]
+        public string Address { get; set; }
 
-        // Fix: Ensure BranchDTO is correctly referenced as a type  
-        // public List<BranchDTO.BranchDTO>? Branches { get; set; }
+        public List<BranchDTO.BranchDTO> Branches { get; set; }
+    }
+
+    public class KindergartenCreateDTO : BaseEntityDTO
+    {
+        public int Id { get; set; }
+        [Required(ErrorMessage = "Arabic name is required.")]
+        [MinLength(3)]
+        [MaxLength(50)]
+        public string NameAr { get; set; }
+
+        [Required(ErrorMessage = "English name is required.")]
+        [MinLength(3)]
+        [MaxLength(50)]
+        public string NameEn { get; set; }
+
+        [Required(ErrorMessage = "Address is required.")]
+        [MinLength(10)]
+        [MaxLength(100)]
+        public string Address { get; set; }
+
+        public List<BranchCreateDTO>? Branches { get; set; }
+    }
+
+    public class KindergartenUpdateDTO : BaseEntityDTO
+    {
+        public int Id { get; set; }
+
+        [Required(ErrorMessage = "Arabic name is required.")]
+        [MinLength(3)]
+        [MaxLength(50)]
+        public string NameAr { get; set; }
+
+        [Required(ErrorMessage = "English name is required.")]
+        [MinLength(3)]
+        [MaxLength(50)]
+        public string NameEn { get; set; }
+
+        [Required(ErrorMessage = "Address is required.")]
+        [MinLength(10)]
+        [MaxLength(100)]
+        public string Address { get; set; }
+
+        [Required(ErrorMessage = "Kindergarten code is required.")]
+        [StringLength(8, MinimumLength = 8, ErrorMessage = "Kindergarten code must be exactly 8 characters.")]
+        [RegularExpression(@"^KG\d{6}$", ErrorMessage = "Kindergarten code must follow the format KG000001.")]
+        public string KGCode { get; set; } = string.Empty;
+
+        public List<BranchUpdateDTO> Branches { get; set; }
     }
 }

@@ -5,32 +5,40 @@ using Microsoft.AspNetCore.Mvc;
 using Kindergarten.BLL.Helper;
 using Kindergarten.BLL.Models.KindergartenDTO;
 using Kindergarten.BLL.Services;
+using Kindergarten.BLL.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace Kindergarten.API.Controllers
 {
     [Authorize]
     public class KindergartenController : BaseController
     {
+        #region prop
         private readonly IKindergartenService _kindergartenService;
+        #endregion
 
+        #region ctor
         public KindergartenController(IKindergartenService kindergartenService)
         {
             _kindergartenService = kindergartenService;
         }
+        #endregion
+
+        #region actions
 
         // GET: api/Kindergarten/GetAll
-        [HttpGet("GetAll")]
-        public async Task<IActionResult> GetAll()
+        [HttpGet("GetAllPaginated")]
+        public async Task<IActionResult> GetAllPaginated([FromQuery] PaginationFilter filter)
         {
             try
             {
-                // بدّل السطر هذا
-                var kgs = await _kindergartenService.GetAllKgsWithBranchesAsync();
-                return Ok(new ApiResponse<IEnumerable<KindergartenDTO>>
+                var pagedResult = await _kindergartenService.GetAllKgsAsync(filter);
+
+                return Ok(new ApiResponse<PagedResult<KindergartenDTO>>
                 {
                     Code = (int)HttpStatusCode.OK,
                     Status = "Success",
-                    Result = kgs
+                    Result = pagedResult
                 });
             }
             catch (Exception ex)
@@ -43,7 +51,6 @@ namespace Kindergarten.API.Controllers
                 });
             }
         }
-
 
         // GET: api/Kindergarten/GetById/5
         [HttpGet("GetById/{id}")]
@@ -85,12 +92,14 @@ namespace Kindergarten.API.Controllers
             try
             {
                 if (dto == null)
+                {
                     return BadRequest(new ApiResponse<string>
                     {
                         Code = (int)HttpStatusCode.BadRequest,
-                        Status = "Error",
+                        Status = "Validation Error",
                         Result = "Invalid data."
                     });
+                }
 
                 if (!ModelState.IsValid)
                 {
@@ -117,6 +126,15 @@ namespace Kindergarten.API.Controllers
                     Result = createdKg
                 });
             }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new ApiResponse<string>
+                {
+                    Code = (int)HttpStatusCode.BadRequest,
+                    Status = "Validation Error",
+                    Result = ex.Message
+                });
+            }
             catch (Exception ex)
             {
                 return StatusCode((int)HttpStatusCode.InternalServerError, new ApiResponse<string>
@@ -135,12 +153,14 @@ namespace Kindergarten.API.Controllers
             try
             {
                 if (dto == null)
+                {
                     return BadRequest(new ApiResponse<string>
                     {
                         Code = (int)HttpStatusCode.BadRequest,
-                        Status = "Error",
+                        Status = "Validation Error",
                         Result = "Invalid data."
                     });
+                }
 
                 if (!ModelState.IsValid)
                 {
@@ -157,20 +177,33 @@ namespace Kindergarten.API.Controllers
                     });
                 }
 
-                var updatedKg = await _kindergartenService.UpdateKgAsync(dto);
+                var updatedBy = User.Identity?.Name ?? "Unknown";
+                var updatedKg = await _kindergartenService.UpdateKgAsync(dto, updatedBy);
+
                 if (updatedKg == null)
+                {
                     return NotFound(new ApiResponse<string>
                     {
                         Code = (int)HttpStatusCode.NotFound,
                         Status = "Error",
                         Result = $"Kindergarten with ID {dto.Id} not found."
                     });
+                }
 
                 return Ok(new ApiResponse<KindergartenDTO>
                 {
                     Code = (int)HttpStatusCode.OK,
                     Status = "Success",
                     Result = updatedKg
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new ApiResponse<string>
+                {
+                    Code = (int)HttpStatusCode.BadRequest,
+                    Status = "Validation Error",
+                    Result = ex.Message
                 });
             }
             catch (Exception ex)
@@ -190,15 +223,21 @@ namespace Kindergarten.API.Controllers
         {
             try
             {
+                // 🟡 محاولة حذف الحضانة من خلال الـ Service
                 var success = await _kindergartenService.DeleteKgAsync(id);
+
+                // 🔴 لو الحضانة غير موجودة
                 if (!success)
+                {
                     return NotFound(new ApiResponse<string>
                     {
                         Code = (int)HttpStatusCode.NotFound,
                         Status = "Error",
                         Result = $"Kindergarten with ID {id} not found."
                     });
+                }
 
+                // ✅ حذف ناجح
                 return Ok(new ApiResponse<string>
                 {
                     Code = (int)HttpStatusCode.OK,
@@ -206,8 +245,19 @@ namespace Kindergarten.API.Controllers
                     Result = "Kindergarten deleted successfully."
                 });
             }
+            catch (DbUpdateException)
+            {
+                // 🔴 خطأ بسبب وجود علاقات مرتبطة (مثل: فروع، موظفين...)
+                return BadRequest(new ApiResponse<string>
+                {
+                    Code = (int)HttpStatusCode.BadRequest,
+                    Status = "Delete Failed",
+                    Result = "Cannot delete this kindergarten because it has related data."
+                });
+            }
             catch (Exception ex)
             {
+                // 🔴 أي خطأ عام غير متوقع
                 return StatusCode((int)HttpStatusCode.InternalServerError, new ApiResponse<string>
                 {
                     Code = (int)HttpStatusCode.InternalServerError,
@@ -221,17 +271,25 @@ namespace Kindergarten.API.Controllers
         [HttpPut("SoftDelete/{id}")]
         public async Task<IActionResult> SoftDelete(int id)
         {
+            var updatedBy = User.Identity?.Name ?? "Unknown";
+
             try
             {
-                var success = await _kindergartenService.SoftDeleteKgAsync(id);
+                // 🟡 محاولة Soft Delete من خلال الـ Service
+                var success = await _kindergartenService.SoftDeleteKgWithBranchesAsync(id , updatedBy);
+
+                // 🔴 الحضانة غير موجودة
                 if (!success)
+                {
                     return NotFound(new ApiResponse<string>
                     {
                         Code = (int)HttpStatusCode.NotFound,
                         Status = "Error",
                         Result = $"Kindergarten with ID {id} not found."
                     });
+                }
 
+                // ✅ Soft Delete ناجح
                 return Ok(new ApiResponse<string>
                 {
                     Code = (int)HttpStatusCode.OK,
@@ -239,8 +297,19 @@ namespace Kindergarten.API.Controllers
                     Result = "Kindergarten soft deleted successfully."
                 });
             }
+            catch (DbUpdateException)
+            {
+                // 🔴 وجود بيانات مرتبطة تمنع الحذف الناعم (لو طبقت نفس منطق العلاقات)
+                return BadRequest(new ApiResponse<string>
+                {
+                    Code = (int)HttpStatusCode.BadRequest,
+                    Status = "Delete Failed",
+                    Result = "Cannot soft delete this kindergarten because it has related data."
+                });
+            }
             catch (Exception ex)
             {
+                // 🔴 أي خطأ غير متوقع
                 return StatusCode((int)HttpStatusCode.InternalServerError, new ApiResponse<string>
                 {
                     Code = (int)HttpStatusCode.InternalServerError,
@@ -249,5 +318,7 @@ namespace Kindergarten.API.Controllers
                 });
             }
         }
+        #endregion
+
     }
 }

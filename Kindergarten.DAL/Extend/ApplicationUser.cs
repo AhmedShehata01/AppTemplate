@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Kindergarten.DAL.Entity;
 using Microsoft.AspNetCore.Identity;
 
 namespace Kindergarten.DAL.Extend
@@ -28,8 +29,9 @@ namespace Kindergarten.DAL.Extend
         public string? Provider { get; set; } // "Google" أو "Facebook"
         public string? ProviderUserId { get; set; } // الـ ID الخاص بالمستخدم في المنصة
 
+        public bool IsFirstLogin { get; set; } = false;
 
-
+        public UserBasicProfile? BasicProfile { get; set; }
 
     }
 }

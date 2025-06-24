@@ -4,11 +4,13 @@ using Kindergarten.BLL.Helper;
 using Kindergarten.BLL.Models.UsersManagementDTO;
 using Kindergarten.BLL.Services;
 using Kindergarten.DAL.Database;
+using Kindergarten.DAL.Entity;
 using Kindergarten.DAL.Enum;
 using Kindergarten.DAL.Extend;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Kindergarten.API.Controllers
 {
@@ -221,8 +223,8 @@ namespace Kindergarten.API.Controllers
             return Ok(claimTypes);
         }
 
-        [HttpPost("create-by-admin")]
         [Authorize(Roles = "Admin,Super Admin")]
+        [HttpPost("create-by-admin")]
         public async Task<IActionResult> CreateUserByAdmin([FromBody] CreateUserByAdminDTO dto)
         {
             try
@@ -288,7 +290,6 @@ namespace Kindergarten.API.Controllers
                 });
             }
         }
-
 
         #endregion
 

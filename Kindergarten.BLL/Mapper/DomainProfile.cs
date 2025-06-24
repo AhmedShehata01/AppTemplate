@@ -5,8 +5,8 @@ using System.Text;
 using System.Threading.Tasks;
 using AutoMapper;
 using Kindergarten.BLL.Models.BranchDTO;
-using Kindergarten.BLL.Models.KGBranchDTO;
 using Kindergarten.BLL.Models.KindergartenDTO;
+using Kindergarten.BLL.Models.UsersManagementDTO;
 using Kindergarten.DAL.Entity;
 
 namespace Kindergarten.BLL.Mapper
@@ -15,27 +15,57 @@ namespace Kindergarten.BLL.Mapper
     {
         public DomainProfile()
         {
-            #region Mapping configurations for Kindergarten and Branch entities
-            CreateMap<KG, KindergartenDTO>().ReverseMap();
-            CreateMap<KindergartenCreateDTO, KG>().ReverseMap();
-            CreateMap<KindergartenUpdateDTO, KG>().ReverseMap();
+            #region Kindergarten Mappings
 
-            CreateMap<Branch, BranchDTO>().ReverseMap();
-            CreateMap<BranchCreateDTO, Branch>()
-                .ForMember(dest => dest.Kindergarten, opt => opt.Ignore());
-            CreateMap<Branch, BranchCreateDTO>();  // العكس حسب الحاجة
-            CreateMap<BranchUpdateDTO, Branch>().ReverseMap();
+            // Entity → DTO مع الفروع النشطة فقط
+            CreateMap<KG, KindergartenDTO>()
+                .ForMember(dest => dest.Branches,
+                           opt => opt.MapFrom(src => src.Branches.Where(b => b.IsDeleted == false)));
+
+            // Create DTO → Entity
+            CreateMap<KindergartenCreateDTO, KG>()
+                .ForMember(dest => dest.KGCode, opt => opt.Ignore()) // نولد الكود يدويًا في الباك اند
+                .ForMember(dest => dest.CreatedBy, opt => opt.Ignore()) // نعطيها يدويًا في الخدمة
+                .ForMember(dest => dest.CreatedOn, opt => opt.Ignore());
+
+            // Update DTO → Entity
+            //CreateMap<KindergartenUpdateDTO, KG>().ReverseMap();
+            CreateMap<KindergartenUpdateDTO, KG>()
+                // إذا عندك حقول تتبع التعديل اضف تجاهلها هنا
+                .ForMember(dest => dest.CreatedBy, opt => opt.Ignore())
+                .ForMember(dest => dest.CreatedOn, opt => opt.Ignore())
+                .ForMember(dest => dest.UpdatedBy, opt => opt.Ignore())
+                .ForMember(dest => dest.UpdatedOn, opt => opt.Ignore());
+
             #endregion
 
-            #region Mapping KG + Branches into KGBranchDTO
-            CreateMap<KG, KGBranchDTO>()
-                .ForMember(dest => dest.Branches, opt => opt.MapFrom(src => src.Branches));
+            #region Branch Mappings
 
-            CreateMap<KGBranchDTO, KG>()
-                .ForMember(dest => dest.Branches, opt => opt.MapFrom(src => src.Branches));
+            CreateMap<Branch, BranchDTO>().ReverseMap();
+            CreateMap<Branch, BranchCreateDTO>().ReverseMap();
 
-            CreateMap<KG, KGBranchCreateDTO>().ReverseMap();
-            CreateMap<KG, KGBranchUpdateDTO>().ReverseMap();
+            CreateMap<Branch, BranchUpdateDTO>();
+
+            CreateMap<BranchUpdateDTO, Branch>()
+                .ForMember(dest => dest.Kindergarten, opt => opt.Ignore()) // نتجنب ربط الـ Navigation Property بشكل تلقائي
+                .ForMember(dest => dest.CreatedBy, opt => opt.Ignore()) // نعطيها يدويًا
+                .ForMember(dest => dest.CreatedOn, opt => opt.Ignore())
+                .ForMember(dest => dest.UpdatedBy, opt => opt.Ignore())
+                .ForMember(dest => dest.UpdatedOn, opt => opt.Ignore());
+
+            #endregion
+
+
+            #region Mapping for User Profile
+            CreateMap<CompleteBasicProfileDTO, UserBasicProfile>()
+                .ForMember(dest => dest.UserId, opt => opt.Ignore()) // نعطيها يدويًا
+                .ForMember(dest => dest.Status, opt => opt.Ignore()) // نعطيها يدويًا
+                .ForMember(dest => dest.SubmittedAt, opt => opt.Ignore()); // نعطيها يدويًا
+
+            // العكس من الـ Entity إلى DTO
+            CreateMap<UserBasicProfile, CompleteBasicProfileDTO>();
+            CreateMap<GetUsersProfilesDTO, UserBasicProfile>().ReverseMap();
+
             #endregion
         }
     }

@@ -37,6 +37,8 @@ try
 
     #endregion
 
+
+
     // Add services to the container.
     builder.Services.AddControllers();
 
@@ -135,19 +137,6 @@ try
     #endregion
 
     #region Microsoft Identity Configuration
-
-    // إعداد المصادقة باستخدام الـ Cookie فقط لو عندك Web UI (مش ضروري مع JWT)
-    //builder.Services.AddAuthentication(options =>
-    //{
-    //    options.DefaultAuthenticateScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-    //    options.DefaultChallengeScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-    //})
-    //.AddCookie(options =>
-    //{
-    //    options.LoginPath = new PathString("/Account/Login");
-    //    options.AccessDeniedPath = new PathString("/Account/Login");
-    //});
-
     // إعداد الـ Identity الكامل (ApplicationUser + Roles + Token Providers)
     builder.Services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
     {
@@ -192,7 +181,6 @@ try
     builder.Services.AddScoped<IAuthService, AuthService>();
     builder.Services.AddScoped<IBranchService, BranchService>();
     builder.Services.AddScoped<IKindergartenService, KindergartenService>();
-    builder.Services.AddScoped<IKGBranchService, KGBranchService>();
 
     builder.Services.AddScoped<IEmailService, EmailService>();
     builder.Services.AddScoped<ICustomUsersService, CustomUsersService>();
@@ -232,6 +220,11 @@ try
 
     #endregion
 
+    #region Admin Setting in AppSettings
+    builder.Services.Configure<AdminSettings>(
+    builder.Configuration.GetSection("AdminSettings"));
+    #endregion
+
     var app = builder.Build();
 
     #region Ensure roles and admin user are seeded
@@ -263,6 +256,8 @@ try
         .AllowAnyOrigin()
         .AllowAnyMethod()
         .AllowAnyHeader());
+
+    app.UseStaticFiles();
 
     app.UseAuthentication();
     app.UseAuthorization();

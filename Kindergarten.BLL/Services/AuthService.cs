@@ -94,7 +94,14 @@ namespace Kindergarten.BLL.Services
                 new Claim(ClaimTypes.Name, user.UserName),
                 new Claim(ClaimTypes.Email, user.Email ?? ""),
                 // new Claim("UserType", user.UserType.ToString())
+                // إضافة IsAgree كـ Claim نصي (true / false)
+                new Claim("IsAgree", user.IsAgree ? "true" : "false")
             };
+            // ✅ فقط أضف Claim "IsFirstLogin" إذا كانت true
+            if (user.IsFirstLogin)
+            {
+                claims.Add(new Claim("IsFirstLogin", "true"));
+            }
 
             foreach (var role in roles)
             {
