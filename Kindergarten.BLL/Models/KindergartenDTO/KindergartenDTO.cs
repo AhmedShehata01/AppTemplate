@@ -79,4 +79,29 @@ namespace Kindergarten.BLL.Models.KindergartenDTO
 
         public List<BranchUpdateDTO> Branches { get; set; }
     }
+
+    public class KindergartenFullDTO : BaseEntityDTO
+    {
+        public int Id { get; set; }
+
+        [Required(ErrorMessage = "Arabic name is required.")]
+        [MinLength(3)]
+        [MaxLength(50)]
+        public string NameAr { get; set; }
+
+        [Required(ErrorMessage = "English name is required.")]
+        [MinLength(3)]
+        [MaxLength(50)]
+        public string NameEn { get; set; }
+
+        public string KGCode { get; set; }
+
+        [Required(ErrorMessage = "Address is required.")]
+        [MinLength(10)]
+        [MaxLength(100)]
+        public string Address { get; set; }
+
+        public List<BranchDTO.BranchDTO> Branches { get; set; }
+    }
+
 }

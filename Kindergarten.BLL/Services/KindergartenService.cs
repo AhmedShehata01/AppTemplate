@@ -7,11 +7,13 @@ using System.Threading.Tasks;
 using AutoMapper;
 using Kindergarten.BLL.Extensions;
 using Kindergarten.BLL.Models;
+using Kindergarten.BLL.Models.ActivityLogDTO;
 using Kindergarten.BLL.Models.BranchDTO;
 using Kindergarten.BLL.Models.KindergartenDTO;
 using Kindergarten.BLL.Repository;
 using Kindergarten.DAL.Database;
 using Kindergarten.DAL.Entity;
+using Kindergarten.DAL.Enum;
 using Microsoft.EntityFrameworkCore;
 
 namespace Kindergarten.BLL.Services
@@ -21,17 +23,21 @@ namespace Kindergarten.BLL.Services
         #region Prop
         private readonly IGenericRepository<KG, int> _kgRepository;
         private readonly IMapper _mapper;
+        private readonly IActivityLogService _activityLogService;
+
         public ApplicationContext _db { get; }
         #endregion
 
         #region CTOR
         public KindergartenService(ApplicationContext db,
                                     IGenericRepository<KG, int> kgRepository,
-                                    IMapper mapper)
+                                    IMapper mapper,
+                                    IActivityLogService activityLogService)
         {
             _db = db;
             _kgRepository = kgRepository;
             _mapper = mapper;
+            _activityLogService = activityLogService;
         }
         #endregion
 
@@ -95,11 +101,11 @@ namespace Kindergarten.BLL.Services
             return _mapper.Map<KindergartenDTO>(kg);
         }
 
-        public async Task<KindergartenDTO> CreateKgAsync(KindergartenCreateDTO dto, string createdBy)
+        public async Task<KindergartenDTO> CreateKgAsync(KindergartenCreateDTO dto, string userId, string userName)
         {
             var kg = _mapper.Map<KG>(dto);
             kg.KGCode = await GenerateKgCodeAsync();
-            kg.CreatedBy = createdBy;
+            kg.CreatedBy = userId;
             kg.Branches = new List<Branch>();
 
             if (dto.Branches == null || !dto.Branches.Any())
@@ -128,7 +134,7 @@ namespace Kindergarten.BLL.Services
                     continue;
 
                 var branch = _mapper.Map<Branch>(branchDto);
-                branch.CreatedBy = createdBy;
+                branch.CreatedBy = userId;
 
                 string newBranchCode;
                 do
@@ -147,6 +153,27 @@ namespace Kindergarten.BLL.Services
             try
             {
                 var result = await _kgRepository.AddAsync(kg);
+
+                // ✨ Logging بعد حفظ الكيان ووجود Id حقيقي
+                var newKgDto = _mapper.Map<KindergartenDTO>(result);
+                var newData = System.Text.Json.JsonSerializer.Serialize(newKgDto);
+
+                var entityType = _db.Model.FindEntityType(typeof(KG));
+                var tableName = entityType?.GetTableName() ?? nameof(KG);
+
+                var logDto = new ActivityLogCreateDTO
+                {
+                    EntityName = tableName,
+                    EntityId = result.Id.ToString(),
+                    ActionType = ActivityActionType.Created,
+                    NewValues = newData,
+                    PerformedByUserId = userId,
+                    PerformedByUserName = userName,
+                    SystemComment = "إضافة حضانة جديدة مع الفروع"
+                };
+
+                await _activityLogService.CreateAsync(logDto);
+
                 return _mapper.Map<KindergartenDTO>(result);
             }
             catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("IX_Branches_BranchCode") == true)
@@ -155,9 +182,10 @@ namespace Kindergarten.BLL.Services
             }
         }
 
-        public async Task<KindergartenDTO> UpdateKgAsync(KindergartenUpdateDTO dto, string updatedBy)
+
+        public async Task<KindergartenDTO> UpdateKgAsync(KindergartenUpdateDTO dto, string userId, string userName, string? userComment)
         {
-            // جلب الحضانة الأصلية مع الفروع متتبعة (Tracking مهم للتحديث)
+            // جلب الحضانة الأصلية مع الفروع
             var existingKg = await _db.Kindergartens
                 .Include(k => k.Branches)
                 .FirstOrDefaultAsync(k => k.Id == dto.Id);
@@ -165,31 +193,32 @@ namespace Kindergarten.BLL.Services
             if (existingKg == null)
                 return null;
 
-            // تحديث الحقول الأساسية للحضانة
+            // ⬅️ لقطة من البيانات القديمة قبل التعديل
+            var oldKgDto = _mapper.Map<KindergartenDTO>(existingKg);
+            var oldData = System.Text.Json.JsonSerializer.Serialize(oldKgDto);
+
+            // تحديث بيانات الحضانة
             existingKg.NameAr = dto.NameAr;
             existingKg.NameEn = dto.NameEn;
             existingKg.Address = dto.Address;
-            // إذا في خصائص أخرى تحتاج تحديث اضفها هنا
-            existingKg.UpdatedBy = updatedBy;
+            existingKg.UpdatedBy = userId;
             existingKg.UpdatedOn = DateTime.UtcNow;
 
             dto.Branches ??= new List<BranchUpdateDTO>();
 
-            // قائمة معرفات الفروع التي وصلت من DTO (للفروع التي موجودة مسبقًا)
             var incomingBranchIds = dto.Branches.Where(b => b.Id > 0).Select(b => b.Id).ToList();
 
-            // عمل Soft Delete للفروع التي موجودة في الحضانة لكن غير موجودة في الطلب الحالي
-            foreach (var branch in existingKg.Branches.Where(b => !incomingBranchIds.Contains(b.Id) && b.IsDeleted == false))
+            // Soft delete للفروع المحذوفة
+            foreach (var branch in existingKg.Branches
+                .Where(b => !incomingBranchIds.Contains(b.Id) && b.IsDeleted == false))
             {
                 branch.IsDeleted = true;
-                branch.UpdatedBy = updatedBy;
+                branch.UpdatedBy = userId;
                 branch.UpdatedOn = DateTime.UtcNow;
             }
 
-            // إعداد HashSet لتتبع BranchCodes المستخدمة فعليًا
             var usedCodes = new HashSet<string>(existingKg.Branches.Select(b => b.BranchCode));
 
-            // دالة مساعدة لتحديد الرقم التالي للكود الجديد
             int nextCodeNumber = 1;
             var lastCode = await _db.Branches
                 .OrderByDescending(b => b.BranchCode)
@@ -202,12 +231,10 @@ namespace Kindergarten.BLL.Services
                     nextCodeNumber = lastNum + 1;
             }
 
-            // معالجة الفروع الواردة في DTO
             foreach (var branchDto in dto.Branches)
             {
                 if (branchDto.Id > 0)
                 {
-                    // تحديث فرع موجود
                     var existingBranch = existingKg.Branches.FirstOrDefault(b => b.Id == branchDto.Id);
                     if (existingBranch != null)
                     {
@@ -216,15 +243,13 @@ namespace Kindergarten.BLL.Services
                         existingBranch.Address = branchDto.Address;
                         existingBranch.Phone = branchDto.Phone;
                         existingBranch.Email = branchDto.Email;
-                        // لا تغير BranchCode لأنه مفتاح فريد
-                        existingBranch.UpdatedBy = updatedBy;
+                        existingBranch.UpdatedBy = userId;
                         existingBranch.UpdatedOn = DateTime.UtcNow;
-                        existingBranch.IsDeleted = false; // لو كان محذوف ممكن تعيد تفعيله حسب الحاجة
+                        existingBranch.IsDeleted = false;
                     }
                 }
                 else
                 {
-                    // إضافة فرع جديد مع توليد BranchCode فريد
                     var newBranch = new Branch
                     {
                         NameAr = branchDto.NameAr,
@@ -232,13 +257,12 @@ namespace Kindergarten.BLL.Services
                         Address = branchDto.Address,
                         Phone = branchDto.Phone,
                         Email = branchDto.Email,
-                        CreatedBy = updatedBy,
+                        CreatedBy = userId,
                         CreatedOn = DateTime.UtcNow,
                         IsDeleted = false,
                         KindergartenId = existingKg.Id
                     };
 
-                    // توليد كود جديد فريد للفرع
                     string branchCode;
                     do
                     {
@@ -253,57 +277,151 @@ namespace Kindergarten.BLL.Services
                 }
             }
 
-            // تأكيد وجود فرع واحد نشط على الأقل
             if (!existingKg.Branches.Any(b => b.IsDeleted == false))
                 throw new InvalidOperationException("Each kindergarten must have at least one active branch.");
 
-            // حفظ التغييرات في قاعدة البيانات
             await _db.SaveChangesAsync();
 
-            // إرجاع البيانات المحدثة بشكل DTO
-            return _mapper.Map<KindergartenDTO>(existingKg);
+            // Logging بعد التحديث
+            var updatedKgDto = _mapper.Map<KindergartenDTO>(existingKg);
+            var newData = System.Text.Json.JsonSerializer.Serialize(updatedKgDto);
+
+            var entityType = _db.Model.FindEntityType(typeof(KG));
+            var tableName = entityType?.GetTableName() ?? nameof(KG);
+
+            var logDto = new ActivityLogCreateDTO
+            {
+                EntityName = tableName,
+                EntityId = existingKg.Id.ToString(),
+                ActionType = ActivityActionType.Updated,
+                OldValues = oldData,            // ✅ أضفنا الـ OldValues هنا
+                NewValues = newData,
+                PerformedByUserId = userId,
+                PerformedByUserName = userName,
+                SystemComment = "تحديث بيانات حضانة مع الفروع",
+                UserComment = userComment
+            };
+
+            await _activityLogService.CreateAsync(logDto);
+
+            return updatedKgDto;
         }
 
-        public async Task<bool> DeleteKgAsync(int id)
-        {
-            var kg = await _kgRepository.GetByIdAsync(id);
-            if (kg == null) return false;
 
-            await _kgRepository.DeleteAsync(id);
+        public async Task<bool> DeleteKgAsync(int id, string userId, string userName, string? userComment)
+        {
+            // نجيب بيانات الحضانة مع الفروع قبل الحذف
+            var kg = await _db.Kindergartens
+                .Include(k => k.Branches)
+                .FirstOrDefaultAsync(k => k.Id == id);
+
+            if (kg == null)
+                return false;
+
+            // ✨ نسجل Old Values
+            var oldKgDto = _mapper.Map<KindergartenDTO>(kg);
+            var oldData = System.Text.Json.JsonSerializer.Serialize(oldKgDto);
+
+            // تنفيذ الحذف الفعلي
+            _db.Kindergartens.Remove(kg);
+            await _db.SaveChangesAsync();
+
+            // ✨ إنشاء Log
+            var entityType = _db.Model.FindEntityType(typeof(KG));
+            var tableName = entityType?.GetTableName() ?? nameof(KG);
+
+            var logDto = new ActivityLogCreateDTO
+            {
+                EntityName = tableName,
+                EntityId = kg.Id.ToString(),
+                ActionType = ActivityActionType.Deleted,
+                OldValues = oldData,
+                NewValues = null,
+                PerformedByUserId = userId,
+                PerformedByUserName = userName,
+                SystemComment = "حذف حضانة مع الفروع",
+                UserComment = userComment
+            };
+
+            await _activityLogService.CreateAsync(logDto);
+
             return true;
         }
 
-        public async Task<bool> SoftDeleteKgAsync(int id)
-        {
-            var kg = await _kgRepository.GetByIdAsync(id);
-            if (kg == null) return false;
+        //public async Task<bool> SoftDeleteKgAsync(int id)
+        //{
+        //    var kg = await _kgRepository.GetByIdAsync(id);
+        //    if (kg == null) return false;
 
-            await _kgRepository.SoftDeleteAsync(id);
-            return true;
-        }
+        //    await _kgRepository.SoftDeleteAsync(id);
+        //    return true;
+        //}
 
-        public async Task<bool> SoftDeleteKgWithBranchesAsync(int id, string updatedBy)
+        public async Task<bool> SoftDeleteKgWithBranchesAsync(int id, string userId, string userName, string? userComment)
         {
             var kg = await _db.Kindergartens
                 .Include(k => k.Branches)
                 .FirstOrDefaultAsync(k => k.Id == id);
 
-            if (kg == null) return false;
+            if (kg == null)
+                return false;
 
+            // ✨ نجهز Old Values قبل التعديل
+            var oldKgDto = _mapper.Map<KindergartenFullDTO>(kg);
+            var oldData = System.Text.Json.JsonSerializer.Serialize(oldKgDto);
+
+            // تنفيذ Soft Delete
             kg.IsDeleted = true;
-            kg.UpdatedBy = updatedBy;
+            kg.UpdatedBy = userId;
             kg.UpdatedOn = DateTime.UtcNow;
 
             foreach (var branch in kg.Branches.Where(b => b.IsDeleted == false))
             {
                 branch.IsDeleted = true;
-                branch.UpdatedBy = updatedBy;
+                branch.UpdatedBy = userId;
                 branch.UpdatedOn = DateTime.UtcNow;
             }
 
             await _db.SaveChangesAsync();
+
+            // توليد NewValues بعد التغييرات
+            var newKgDto = _mapper.Map<KindergartenFullDTO>(kg);
+            var newData = System.Text.Json.JsonSerializer.Serialize(newKgDto);
+
+            // ✨ إنشاء Log
+            var entityType = _db.Model.FindEntityType(typeof(KG));
+            var tableName = entityType?.GetTableName() ?? nameof(KG);
+
+            var logDto = new ActivityLogCreateDTO
+            {
+                EntityName = tableName,
+                EntityId = kg.Id.ToString(),
+                ActionType = ActivityActionType.SoftDeleted, // أو SoftDeleted لو عندك ActionType مخصوص
+                OldValues = oldData,
+                NewValues = newData,
+                PerformedByUserId = userId,
+                PerformedByUserName = userName,
+                SystemComment = "Soft delete لحضانة والفروع المرتبطة بها",
+                UserComment = userComment
+            };
+
+            await _activityLogService.CreateAsync(logDto);
+
             return true;
         }
+
+        public async Task<List<ActivityLogViewDTO>> GetKgHistoryByKgIdAsync(int kgId)
+        {
+            var entityType = _db.Model.FindEntityType(typeof(KG));
+            var tableName = entityType?.GetTableName() ?? nameof(KG);
+
+            var entityId = kgId.ToString();
+
+            var logs = await _activityLogService.GetEntityHistoryAsync(tableName, entityId);
+
+            return logs;
+        }
+
 
         #endregion
 
@@ -346,11 +464,12 @@ namespace Kindergarten.BLL.Services
     {
         Task<PagedResult<KindergartenDTO>> GetAllKgsAsync(PaginationFilter filter);
         Task<KindergartenDTO> GetKgByIdAsync(int id);
-        Task<KindergartenDTO> CreateKgAsync(KindergartenCreateDTO kgDto, string createdBy);
-        Task<KindergartenDTO> UpdateKgAsync(KindergartenUpdateDTO dto, string updatedBy);
-        Task<bool> DeleteKgAsync(int id);
-        Task<bool> SoftDeleteKgAsync(int id);
-        Task<bool> SoftDeleteKgWithBranchesAsync(int id, string updatedBy);
+        Task<KindergartenDTO> CreateKgAsync(KindergartenCreateDTO kgDto, string userId, string userName);
+        Task<KindergartenDTO> UpdateKgAsync(KindergartenUpdateDTO dto, string userId, string userName , string? userComment);
+        Task<bool> DeleteKgAsync(int id, string userId, string userName, string? userComment);
+        //Task<bool> SoftDeleteKgAsync(int id);
+        Task<bool> SoftDeleteKgWithBranchesAsync(int id, string userId, string userName, string? userComment);
         Task<string> GenerateKgCodeAsync();
+        Task<List<ActivityLogViewDTO>> GetKgHistoryByKgIdAsync(int kgId);
     }
 }

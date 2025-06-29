@@ -7,6 +7,8 @@ using Kindergarten.BLL.Models.KindergartenDTO;
 using Kindergarten.BLL.Services;
 using Kindergarten.BLL.Models;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
+using Kindergarten.BLL.Models.ActivityLogDTO;
 
 namespace Kindergarten.API.Controllers
 {
@@ -116,8 +118,10 @@ namespace Kindergarten.API.Controllers
                     });
                 }
 
-                var createdBy = User.Identity?.Name ?? "Unknown";
-                var createdKg = await _kindergartenService.CreateKgAsync(dto, createdBy);
+
+                var createdByUserName = User.Identity?.Name ?? "Unknown";
+                var createdByUserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+                var createdKg = await _kindergartenService.CreateKgAsync(dto , createdByUserId , createdByUserName);
 
                 return CreatedAtAction(nameof(GetById), new { id = createdKg.Id }, new ApiResponse<KindergartenDTO>
                 {
@@ -148,7 +152,7 @@ namespace Kindergarten.API.Controllers
 
         // PUT: api/Kindergarten/Update
         [HttpPut("Update")]
-        public async Task<IActionResult> Update([FromBody] KindergartenUpdateDTO dto)
+        public async Task<IActionResult> Update([FromBody] KindergartenUpdateDTO dto , string? userComment)
         {
             try
             {
@@ -177,8 +181,21 @@ namespace Kindergarten.API.Controllers
                     });
                 }
 
-                var updatedBy = User.Identity?.Name ?? "Unknown";
-                var updatedKg = await _kindergartenService.UpdateKgAsync(dto, updatedBy);
+                // ✅ جلب UserId و UserName بنفس طريقة الـ Create
+                var updatedByUserName = User.Identity?.Name ?? "Unknown";
+                var updatedByUserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+
+                if (string.IsNullOrEmpty(updatedByUserId))
+                {
+                    return Unauthorized(new ApiResponse<string>
+                    {
+                        Code = (int)HttpStatusCode.Unauthorized,
+                        Status = "Unauthorized",
+                        Result = "User Id is missing from token."
+                    });
+                }
+
+                var updatedKg = await _kindergartenService.UpdateKgAsync(dto, updatedByUserId, updatedByUserName, userComment);
 
                 if (updatedKg == null)
                 {
@@ -217,16 +234,18 @@ namespace Kindergarten.API.Controllers
             }
         }
 
+
         // DELETE: api/Kindergarten/Delete/5
         [HttpDelete("Delete/{id}")]
-        public async Task<IActionResult> Delete(int id)
+        public async Task<IActionResult> Delete(int id, string? userComment)
         {
             try
             {
-                // 🟡 محاولة حذف الحضانة من خلال الـ Service
-                var success = await _kindergartenService.DeleteKgAsync(id);
+                var userName = User.Identity?.Name ?? "Unknown";
+                var userId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
 
-                // 🔴 لو الحضانة غير موجودة
+                var success = await _kindergartenService.DeleteKgAsync(id, userId, userName, userComment);
+
                 if (!success)
                 {
                     return NotFound(new ApiResponse<string>
@@ -237,7 +256,6 @@ namespace Kindergarten.API.Controllers
                     });
                 }
 
-                // ✅ حذف ناجح
                 return Ok(new ApiResponse<string>
                 {
                     Code = (int)HttpStatusCode.OK,
@@ -247,7 +265,6 @@ namespace Kindergarten.API.Controllers
             }
             catch (DbUpdateException)
             {
-                // 🔴 خطأ بسبب وجود علاقات مرتبطة (مثل: فروع، موظفين...)
                 return BadRequest(new ApiResponse<string>
                 {
                     Code = (int)HttpStatusCode.BadRequest,
@@ -257,7 +274,6 @@ namespace Kindergarten.API.Controllers
             }
             catch (Exception ex)
             {
-                // 🔴 أي خطأ عام غير متوقع
                 return StatusCode((int)HttpStatusCode.InternalServerError, new ApiResponse<string>
                 {
                     Code = (int)HttpStatusCode.InternalServerError,
@@ -269,16 +285,15 @@ namespace Kindergarten.API.Controllers
 
         // PUT: api/Kindergarten/SoftDelete/5
         [HttpPut("SoftDelete/{id}")]
-        public async Task<IActionResult> SoftDelete(int id)
+        public async Task<IActionResult> SoftDelete(int id , string? userComment)
         {
-            var updatedBy = User.Identity?.Name ?? "Unknown";
-
             try
             {
-                // 🟡 محاولة Soft Delete من خلال الـ Service
-                var success = await _kindergartenService.SoftDeleteKgWithBranchesAsync(id , updatedBy);
+                var userName = User.Identity?.Name ?? "Unknown";
+                var userId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
 
-                // 🔴 الحضانة غير موجودة
+                var success = await _kindergartenService.SoftDeleteKgWithBranchesAsync(id, userId, userName, userComment);
+
                 if (!success)
                 {
                     return NotFound(new ApiResponse<string>
@@ -289,7 +304,6 @@ namespace Kindergarten.API.Controllers
                     });
                 }
 
-                // ✅ Soft Delete ناجح
                 return Ok(new ApiResponse<string>
                 {
                     Code = (int)HttpStatusCode.OK,
@@ -299,7 +313,6 @@ namespace Kindergarten.API.Controllers
             }
             catch (DbUpdateException)
             {
-                // 🔴 وجود بيانات مرتبطة تمنع الحذف الناعم (لو طبقت نفس منطق العلاقات)
                 return BadRequest(new ApiResponse<string>
                 {
                     Code = (int)HttpStatusCode.BadRequest,
@@ -309,7 +322,6 @@ namespace Kindergarten.API.Controllers
             }
             catch (Exception ex)
             {
-                // 🔴 أي خطأ غير متوقع
                 return StatusCode((int)HttpStatusCode.InternalServerError, new ApiResponse<string>
                 {
                     Code = (int)HttpStatusCode.InternalServerError,
@@ -318,6 +330,43 @@ namespace Kindergarten.API.Controllers
                 });
             }
         }
+
+        // GET: api/Kindergarten/{id}/History
+        [HttpGet("History/{id}")]
+        public async Task<IActionResult> GetKgHistory(int id)
+        {
+            try
+            {
+                var logs = await _kindergartenService.GetKgHistoryByKgIdAsync(id);
+
+                if (logs == null || !logs.Any())
+                {
+                    return Ok(new ApiResponse<string>
+                    {
+                        Code = 404,
+                        Status = "NotFound",
+                        Result = "No logs found for this kindergarten."
+                    });
+                }
+
+                return Ok(new ApiResponse<List<ActivityLogViewDTO>>
+                {
+                    Code = 200,
+                    Status = "Success",
+                    Result = logs
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<string>
+                {
+                    Code = 500,
+                    Status = "Error",
+                    Result = ex.Message
+                });
+            }
+        }
+
         #endregion
 
     }

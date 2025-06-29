@@ -9,7 +9,8 @@ namespace Kindergarten.BLL.Models.DRBRADTO
     public class SidebarItemDTO
     {
         public int Id { get; set; }
-        public string Label { get; set; } = null!;
+        public string LabelAr { get; set; } = null!;
+        public string LabelEn { get; set; } = null!;
         public string Icon { get; set; } = null!;
         public string Route { get; set; } = null!;
         public int? ParentId { get; set; }
@@ -20,7 +21,8 @@ namespace Kindergarten.BLL.Models.DRBRADTO
 
     public class CreateSidebarItemDTO
     {
-        public string Label { get; set; } = null!;
+        public string LabelAr { get; set; } = null!;
+        public string LabelEn { get; set; } = null!;
         public string Icon { get; set; } = null!;
         public string Route { get; set; } = null!;
         public int? ParentId { get; set; } // null => Main item
@@ -30,7 +32,8 @@ namespace Kindergarten.BLL.Models.DRBRADTO
     public class UpdateSidebarItemDTO
     {
         public int Id { get; set; }
-        public string Label { get; set; } = null!;
+        public string LabelAr { get; set; } = null!;
+        public string LabelEn { get; set; } = null!;
         public string Icon { get; set; } = null!;
         public string Route { get; set; } = null!;
         public int? ParentId { get; set; }

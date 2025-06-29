@@ -10,7 +10,8 @@ namespace Kindergarten.DAL.Entity.DRBRA
     {
         public int Id { get; set; }
 
-        public string Label { get; set; } = null!;
+        public string LabelAr { get; set; } = null!;
+        public string LabelEn { get; set; } = null!;
 
         public string Icon { get; set; } = null!;
 

@@ -39,7 +39,9 @@ namespace Kindergarten.BLL.Services
             if (!string.IsNullOrWhiteSpace(filter.SearchText))
             {
                 var search = filter.SearchText.Trim().ToLower();
-                query = query.Where(x => x.Label.ToLower().Contains(search));
+                query = query.Where(x => 
+                        x.LabelAr.ToLower().Contains(search) ||
+                        x.LabelEn.ToLower().Contains(search));
             }
 
             // 🔃 Sorting
@@ -49,8 +51,12 @@ namespace Kindergarten.BLL.Services
 
                 switch (filter.SortBy.ToLower())
                 {
-                    case "label":
-                        query = isDesc ? query.OrderByDescending(x => x.Label) : query.OrderBy(x => x.Label);
+                    case "labelar":
+                        query = isDesc ? query.OrderByDescending(x => x.LabelAr) : query.OrderBy(x => x.LabelAr);
+                        break;
+
+                    case "labelen":
+                        query = isDesc ? query.OrderByDescending(x => x.LabelEn) : query.OrderBy(x => x.LabelEn);
                         break;
 
                     case "route":

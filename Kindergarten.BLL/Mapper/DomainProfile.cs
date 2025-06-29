@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using AutoMapper;
+using Kindergarten.BLL.Models.ActivityLogDTO;
 using Kindergarten.BLL.Models.BranchDTO;
 using Kindergarten.BLL.Models.DRBRADTO;
 using Kindergarten.BLL.Models.KindergartenDTO;
@@ -25,6 +26,10 @@ namespace Kindergarten.BLL.Mapper
             CreateMap<KG, KindergartenDTO>()
                 .ForMember(dest => dest.Branches,
                            opt => opt.MapFrom(src => src.Branches.Where(b => b.IsDeleted == false)));
+
+            CreateMap<KG, KindergartenFullDTO>()
+               .ForMember(dest => dest.Branches,
+                          opt => opt.MapFrom(src => src.Branches));
 
             // Create DTO → Entity
             CreateMap<KindergartenCreateDTO, KG>()
@@ -129,6 +134,30 @@ namespace Kindergarten.BLL.Mapper
             CreateMap<CreateSidebarItemDTO, SidebarItem>();
             CreateMap<UpdateSidebarItemDTO, SidebarItem>();
             #endregion
+
+            #region Activity Log Mappings
+
+            CreateMap<ActivityLog, ActivityLogDTO>()
+                .ForMember(dest => dest.PerformedByUserName,
+                           opt => opt.MapFrom(src => src.PerformedByUser != null
+                                ? src.PerformedByUser.UserName
+                                : src.PerformedByUserName));
+
+            CreateMap<ActivityLog, ActivityLogViewDTO>()
+                .ForMember(dest => dest.PerformedByUserName,
+                           opt => opt.MapFrom(src => src.PerformedByUser != null
+                                ? src.PerformedByUser.UserName
+                                : src.PerformedByUserName))
+                .ForMember(dest => dest.ActionType,
+                    opt => opt.MapFrom(src => src.ActionType.ToString()));
+
+
+            CreateMap<ActivityLogCreateDTO, ActivityLog>()
+                .ForMember(dest => dest.PerformedAt, opt => opt.Ignore());
+
+            #endregion
+
+
 
         }
     }
