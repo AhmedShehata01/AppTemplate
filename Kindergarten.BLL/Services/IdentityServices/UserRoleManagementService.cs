@@ -2,8 +2,11 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
+using Kindergarten.BLL.Models.ActivityLogDTO;
 using Kindergarten.DAL.Database;
+using Kindergarten.DAL.Enum;
 using Kindergarten.DAL.Extend;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -16,16 +19,19 @@ namespace Kindergarten.BLL.Services.IdentityServices
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly RoleManager<ApplicationRole> _roleManager;
         private readonly ApplicationContext _context;
+        private readonly IActivityLogService _activityLogService;
         #endregion
 
         #region Ctor
         public UserRoleManagementService(UserManager<ApplicationUser> userManager, 
                                             RoleManager<ApplicationRole> roleManager,
-                                            ApplicationContext context)
+                                            ApplicationContext context,
+                                            IActivityLogService activityLogService)
         {
             _userManager = userManager;
             _roleManager = roleManager;
             _context = context;
+            _activityLogService = activityLogService;
         }
         #endregion
 
@@ -63,7 +69,7 @@ namespace Kindergarten.BLL.Services.IdentityServices
 
         // تعيين أدوار للمستخدم: 
         // إزالة الأدوار القديمة واستبدالها بالأدوار الجديدة
-        public async Task<bool> AssignRolesToUserAsync(string userId, List<string> requestedRoles)
+        public async Task<bool> AssignRolesToUserAsync(string userId, List<string> requestedRoles, string? performedByUserId, string? performedByUserName)
         {
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null)
@@ -71,29 +77,24 @@ namespace Kindergarten.BLL.Services.IdentityServices
 
             var existingRoles = await _userManager.GetRolesAsync(user);
 
-            // الأدوار الصالحة (IsActive = true && IsDeleted = false)
             var validRolesFromDb = await _roleManager.Roles
                 .Where(r => r.IsActive && !r.IsDeleted)
                 .Select(r => r.Name)
                 .ToListAsync();
 
-            // نفلتر الطلب ونتأكد من صحته
             var validRequestedRoles = requestedRoles
                 .Where(r => validRolesFromDb.Contains(r))
                 .ToList();
 
-            // الأدوار اللي المفروض نضيفها
             var rolesToAdd = validRequestedRoles
                 .Except(existingRoles)
                 .ToList();
 
-            // الأدوار اللي المفروض نحذفها (صالحة وموجودة فعلاً)
             var rolesToRemove = existingRoles
                 .Except(validRequestedRoles)
                 .Where(r => validRolesFromDb.Contains(r))
                 .ToList();
 
-            // إزالة الأدوار القديمة (الصحيحة)
             if (rolesToRemove.Any())
             {
                 var removeResult = await _userManager.RemoveFromRolesAsync(user, rolesToRemove);
@@ -104,7 +105,6 @@ namespace Kindergarten.BLL.Services.IdentityServices
                 }
             }
 
-            // حذف يدوي لأي رول محذوفة أو غير مفعلة
             var invalidRoleIds = await _roleManager.Roles
                 .Where(r => !r.IsActive || r.IsDeleted)
                 .Select(r => r.Id)
@@ -119,7 +119,6 @@ namespace Kindergarten.BLL.Services.IdentityServices
                 await _context.SaveChangesAsync();
             }
 
-            // إضافة الأدوار الجديدة
             if (rolesToAdd.Any())
             {
                 var addResult = await _userManager.AddToRolesAsync(user, rolesToAdd);
@@ -130,8 +129,25 @@ namespace Kindergarten.BLL.Services.IdentityServices
                 }
             }
 
+            // سجل الـ ActivityLog مرة واحدة
+            var oldRolesJson = JsonSerializer.Serialize(existingRoles);
+            var newRolesJson = JsonSerializer.Serialize(validRequestedRoles);
+
+            await _activityLogService.CreateAsync(new ActivityLogCreateDTO
+            {
+                EntityName = "UserRoles",
+                EntityId = userId,
+                ActionType = ActivityActionType.Updated,
+                SystemComment = $"تم تحديث أدوار المستخدم {user.UserName}.",
+                PerformedByUserId = performedByUserId,
+                PerformedByUserName = performedByUserName,
+                OldValues = oldRolesJson,
+                NewValues = newRolesJson
+            });
+
             return true;
         }
+
 
 
 
@@ -144,6 +160,6 @@ namespace Kindergarten.BLL.Services.IdentityServices
     {
         Task<List<string>> GetAllRolesAsync();                   // جلب كل أسماء الأدوار
         Task<List<string>> GetUserRolesAsync(string userId);     // جلب أدوار مستخدم معين
-        Task<bool> AssignRolesToUserAsync(string userId, List<string> roles); // تعيين أدوار للمستخدم
+        Task<bool> AssignRolesToUserAsync(string userId, List<string> roles, string? performedByUserId, string? performedByUserName); // تعيين أدوار للمستخدم
     }
 }

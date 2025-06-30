@@ -14,6 +14,10 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Http;
 using Kindergarten.BLL.Services.SendEmail;
+using Kindergarten.BLL.Models.ActivityLogDTO;
+using Kindergarten.DAL.Enum;
+using System.Security.Claims;
+using System.Text.Json;
 
 
 namespace Kindergarten.BLL.Services.IdentityServices
@@ -26,6 +30,7 @@ namespace Kindergarten.BLL.Services.IdentityServices
         private readonly ApplicationContext _context;
         private readonly IEmailService _emailService; // إنت ممكن تبنيه أو تستخدم موجود
         private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly IActivityLogService _activityLogService;
         #endregion
 
         #region Ctor
@@ -34,13 +39,15 @@ namespace Kindergarten.BLL.Services.IdentityServices
             IMapper mapper,
             ApplicationContext context,
             IEmailService emailService,
-            IHttpContextAccessor httpContextAccessor)
+            IHttpContextAccessor httpContextAccessor,
+            IActivityLogService activityLogService)
         {
             _userManager = userManager;
             _mapper = mapper;
             _context = context;
             _emailService = emailService;
             _httpContextAccessor = httpContextAccessor;
+            _activityLogService = activityLogService;
         }
         #endregion
 
@@ -108,12 +115,16 @@ namespace Kindergarten.BLL.Services.IdentityServices
             return user == null ? null : _mapper.Map<ApplicationUserDTO>(user);
         }
 
-        public async Task<bool> UpdateAsync(string userId, UpdateApplicationUserDTO dto)
+        public async Task<bool> UpdateAsync(string userId, UpdateApplicationUserDTO dto, string? performedByUserId, string? performedByUserName)
         {
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null || user.IsDeleted)
                 return false;
 
+            // خذ نسخة من البيانات القديمة قبل التعديل (علشان تسجلها في الـ log)
+            var oldUserDto = _mapper.Map<ApplicationUserDTO>(user);
+
+            // حدث البيانات
             user.UserName = dto.UserName;
             user.PhoneNumber = dto.PhoneNumber;
             // user.IsAgree = dto.IsAgree;
@@ -122,19 +133,61 @@ namespace Kindergarten.BLL.Services.IdentityServices
             if (!result.Succeeded)
                 throw new Exception(string.Join(", ", result.Errors.Select(e => e.Description)));
 
+            // نسخة بعد التحديث
+            var newUserDto = _mapper.Map<ApplicationUserDTO>(user);
+
+            // سجل الـ ActivityLog
+            await _activityLogService.CreateAsync(new ActivityLogCreateDTO
+            {
+                EntityName = nameof(ApplicationUser),
+                EntityId = user.Id,
+                ActionType = ActivityActionType.Updated,
+                SystemComment = $"تم تعديل بيانات المستخدم: {user.UserName}",
+                PerformedByUserId = performedByUserId,
+                PerformedByUserName = performedByUserName,
+                OldValues = JsonSerializer.Serialize(oldUserDto),
+                NewValues = JsonSerializer.Serialize(newUserDto)
+            });
+
             return true;
         }
 
-        public async Task<bool> DeleteAsync(string userId)
+
+        public async Task<bool> DeleteAsync(string userId, string? performedByUserId, string? performedByUserName)
         {
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null || user.IsDeleted)
                 return false;
 
+            // نسخة البيانات القديمة قبل التعديل (قبل الحذف)
+            var oldUserDto = _mapper.Map<ApplicationUserDTO>(user);
+
+            // تعيين الحذف (Soft delete)
             user.IsDeleted = true;
-            await _userManager.UpdateAsync(user);
+
+            var result = await _userManager.UpdateAsync(user);
+            if (!result.Succeeded)
+                throw new Exception(string.Join(", ", result.Errors.Select(e => e.Description)));
+
+            // نسخة البيانات الجديدة بعد التعديل (بعد الحذف)
+            var newUserDto = _mapper.Map<ApplicationUserDTO>(user);
+
+            // سجل الـ ActivityLog
+            await _activityLogService.CreateAsync(new ActivityLogCreateDTO
+            {
+                EntityName = nameof(ApplicationUser),
+                EntityId = user.Id,
+                ActionType = ActivityActionType.Deleted,
+                SystemComment = $"تم حذف المستخدم: {user.UserName}",
+                PerformedByUserId = performedByUserId,
+                PerformedByUserName = performedByUserName,
+                OldValues = JsonSerializer.Serialize(oldUserDto),
+                NewValues = JsonSerializer.Serialize(newUserDto)
+            });
+
             return true;
         }
+
 
         public async Task<(string UserId, bool EmailSent)> CreateUserByAdminAsync(CreateUserByAdminDTO dto)
         {
@@ -265,6 +318,19 @@ namespace Kindergarten.BLL.Services.IdentityServices
             // 7. إرسال الإيميل
             await _emailService.SendEmailAsync(user.Email, "بيانات الدخول إلى نظام الحضانة", emailBody);
 
+            // بعد await _emailService.SendEmailAsync(...)
+            await _activityLogService.CreateAsync(new ActivityLogCreateDTO
+            {
+                EntityName = nameof(ApplicationUser),
+                EntityId = user.Id,
+                ActionType = ActivityActionType.Created,
+                SystemComment = $"تم إنشاء مستخدم جديد: {user.UserName}",
+                PerformedByUserId = _httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier),
+                PerformedByUserName = _httpContextAccessor.HttpContext?.User.Identity?.Name,
+                NewValues = JsonSerializer.Serialize(_mapper.Map<ApplicationUserDTO>(user))
+            });
+
+
             return (user.Id, true);
         }
 
@@ -278,7 +344,7 @@ namespace Kindergarten.BLL.Services.IdentityServices
         Task<(string UserId, bool EmailSent)> CreateUserByAdminAsync(CreateUserByAdminDTO dto);
         Task<PagedResult<ApplicationUserDTO>> GetAllPaginatedAsync(PaginationFilter filter);   // Get all users paginated
         Task<ApplicationUserDTO> GetByIdAsync(string userId);                                 // Get user by ID
-        Task<bool> UpdateAsync(string userId, UpdateApplicationUserDTO dto);                  // Update user
-        Task<bool> DeleteAsync(string userId);                                     // Delete user
+        Task<bool> UpdateAsync(string userId, UpdateApplicationUserDTO dto, string? performedByUserId, string? performedByUserName);                  // Update user
+        Task<bool> DeleteAsync(string userId, string? performedByUserId, string? performedByUserName);                                     // Delete user
     }
 }

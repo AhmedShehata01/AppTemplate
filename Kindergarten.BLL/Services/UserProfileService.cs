@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using AutoMapper;
 using Kindergarten.BLL.Helper;
 using Kindergarten.BLL.Models;
+using Kindergarten.BLL.Models.ActivityLogDTO;
 using Kindergarten.BLL.Models.UserProfileDTO;
 using Kindergarten.BLL.Services.SendEmail;
 using Kindergarten.DAL.Database;
@@ -30,6 +31,7 @@ namespace Kindergarten.BLL.Services
         private readonly IMapper _mapper;
         private readonly ApplicationContext _db;
         private readonly IOptions<AdminSettings> _adminSettings;
+        private readonly IActivityLogService _activityLogService;
         #endregion
 
         #region CTOR
@@ -40,7 +42,8 @@ namespace Kindergarten.BLL.Services
             IHttpContextAccessor httpContextAccessor,
             IMapper mapper, 
             ApplicationContext db,
-            IOptions<AdminSettings> adminSettings)
+            IOptions<AdminSettings> adminSettings,
+            IActivityLogService activityLogService)
         {
             _userManager = userManager;
             _roleManager = roleManager;
@@ -49,6 +52,7 @@ namespace Kindergarten.BLL.Services
             _mapper = mapper;
             _db = db;
             _adminSettings = adminSettings;
+            _activityLogService = activityLogService;
         }
         #endregion
 
@@ -126,9 +130,8 @@ namespace Kindergarten.BLL.Services
             return profile;
         }
 
-        public async Task<ActionResultDTO> ReviewUserProfileByAdminAsync(ReviewUserProfileByAdminDTO dto, string reviewedById)
+        public async Task<ActionResultDTO> ReviewUserProfileByAdminAsync(ReviewUserProfileByAdminDTO dto, string? reviewedById, string? reviewedByUserName)
         {
-            // 🟡 جلب الملف الشخصي للمستخدم من قاعدة البيانات
             var profile = await _db.UserBasicProfiles.FirstOrDefaultAsync(p => p.UserId == dto.UserId);
             if (profile == null)
             {
@@ -139,7 +142,6 @@ namespace Kindergarten.BLL.Services
                 };
             }
 
-            // 🟡 جلب بيانات المستخدم من نظام الهوية (ASP.NET Identity)
             var user = await _userManager.FindByIdAsync(dto.UserId);
             if (user == null)
             {
@@ -150,13 +152,14 @@ namespace Kindergarten.BLL.Services
                 };
             }
 
-            // 🟢 تحديث بيانات المراجعة في الملف الشخصي
+            var oldStatus = profile.Status;
+            var oldRejectionReason = profile.RejectionReason;
+
             profile.Status = dto.IsApproved ? UserStatus.approved : UserStatus.rejected;
             profile.RejectionReason = dto.IsApproved ? null : dto.RejectionReason;
             profile.ReviewedBy = reviewedById;
             profile.ReviewedAt = DateTime.UtcNow;
 
-            // ✅ إرفاق الكيان في الـ DbContext وتحديد الخصائص المعدلة يدويًا لضمان تتبعها
             _db.Attach(profile);
             var entry = _db.Entry(profile);
             entry.Property(p => p.Status).IsModified = true;
@@ -164,7 +167,6 @@ namespace Kindergarten.BLL.Services
             entry.Property(p => p.ReviewedBy).IsModified = true;
             entry.Property(p => p.ReviewedAt).IsModified = true;
 
-            // 🟢 في حالة الموافقة: تحديث خاصية IsAgree في حساب المستخدم (AspNetUsers)
             if (dto.IsApproved && !user.IsAgree)
             {
                 user.IsAgree = true;
@@ -180,11 +182,35 @@ namespace Kindergarten.BLL.Services
                 }
             }
 
-            // 💾 حفظ التغييرات على كيان الملف الشخصي فقط (وليس حساب المستخدم)
             await _db.SaveChangesAsync();
-            // ⚠️ لا يتم الاعتماد على القيمة المرجعة من SaveChangesAsync() لأنها لا تشمل تغييرات UserManager
 
-            // ✉️ إرسال بريد إلكتروني للمستخدم لإعلامه بنتيجة المراجعة
+            // تسجيل الـ Activity Log
+            var oldValuesJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                Status = oldStatus,
+                RejectionReason = oldRejectionReason
+            });
+
+            var newValuesJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                Status = profile.Status,
+                RejectionReason = profile.RejectionReason
+            });
+
+            await _activityLogService.CreateAsync(new ActivityLogCreateDTO
+            {
+                EntityName = "UserBasicProfile",
+                EntityId = profile.UserId,
+                ActionType = ActivityActionType.Updated,
+                SystemComment = dto.IsApproved ? "تمت الموافقة على ملف المستخدم." : "تم رفض ملف المستخدم.",
+                PerformedByUserId = reviewedById,
+                PerformedByUserName = reviewedByUserName,
+                OldValues = oldValuesJson,
+                NewValues = newValuesJson
+            });
+
+            // إرسال البريد الإلكتروني (الكود الحالي)
+
             if (!string.IsNullOrEmpty(user.Email))
             {
                 var subject = dto.IsApproved ? "تمت الموافقة على حسابك ✅" : "تم رفض حسابك ❌";
@@ -192,62 +218,60 @@ namespace Kindergarten.BLL.Services
                 var message = dto.IsApproved
                     ? "<p>نود إعلامك أنه تمت مراجعة بياناتك من قبل الإدارة، وتم تفعيل حسابك بنجاح.</p>"
                     : $@"<p>نأسف لإبلاغك أنه تم رفض طلب تفعيل حسابك.</p>
-                 <p><strong>سبب الرفض:</strong> {dto.RejectionReason}</p>";
+         <p><strong>سبب الرفض:</strong> {dto.RejectionReason}</p>";
 
                 var emailBody = $@"
-                    <!DOCTYPE html>
-                    <html lang=""ar"" dir=""rtl"">
-                    <head>
-                        <meta charset=""UTF-8"">
-                        <style>
-                            body {{
-                                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                                background-color: #f4f4f4;
-                                padding: 20px;
-                                color: #333;
-                            }}
-                            .container {{
-                                background-color: #fff;
-                                border-radius: 10px;
-                                padding: 30px;
-                                max-width: 600px;
-                                margin: auto;
-                                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-                            }}
-                            .title {{
-                                font-size: 22px;
-                                margin-bottom: 20px;
-                                color: {(dto.IsApproved ? "#28a745" : "#dc3545")};
-                            }}
-                            .footer {{
-                                margin-top: 30px;
-                                font-size: 14px;
-                                color: #777;
-                                text-align: center;
-                            }}
-                        </style>
-                    </head>
-                    <body>
-                        <div class=""container"">
-                            <div class=""title"">{subject}</div>
-                            <div class=""content"">{message}</div>
-                            <div class=""footer"">هذا البريد تم إرساله تلقائيًا من نظام إدارة الحضانة</div>
-                        </div>
-                    </body>
-                    </html>";
+            <!DOCTYPE html>
+            <html lang=""ar"" dir=""rtl"">
+            <head>
+                <meta charset=""UTF-8"">
+                <style>
+                    body {{
+                        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                        background-color: #f4f4f4;
+                        padding: 20px;
+                        color: #333;
+                    }}
+                    .container {{
+                        background-color: #fff;
+                        border-radius: 10px;
+                        padding: 30px;
+                        max-width: 600px;
+                        margin: auto;
+                        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+                    }}
+                    .title {{
+                        font-size: 22px;
+                        margin-bottom: 20px;
+                        color: {(dto.IsApproved ? "#28a745" : "#dc3545")};
+                    }}
+                    .footer {{
+                        margin-top: 30px;
+                        font-size: 14px;
+                        color: #777;
+                        text-align: center;
+                    }}
+                </style>
+            </head>
+            <body>
+                <div class=""container"">
+                    <div class=""title"">{subject}</div>
+                    <div class=""content"">{message}</div>
+                    <div class=""footer"">هذا البريد تم إرساله تلقائيًا من نظام إدارة الحضانة</div>
+                </div>
+            </body>
+            </html>";
 
                 await _emailService.SendEmailAsync(user.Email, subject, emailBody);
             }
 
-            // ✅ النتيجة النهائية
             return new ActionResultDTO
             {
                 Success = true,
-                Message = dto.IsApproved
-                    ? "تمت الموافقة على الملف الشخصي."
-                    : "تم رفض الملف الشخصي."
+                Message = dto.IsApproved ? "تمت الموافقة على الملف الشخصي." : "تم رفض الملف الشخصي."
             };
         }
+
 
         // get all Users Profiles 
         public async Task<PagedResult<GetUsersProfilesDTO>> GetAllUsersProfilesForAdminAsync(PaginationFilter filter)
@@ -344,7 +368,7 @@ namespace Kindergarten.BLL.Services
     {
         Task<bool> CompleteBasicProfileAsync(string userId, CompleteBasicProfileDTO dto);
         Task<UserStatus?> GetUserStatusAsync(string userId);
-        Task<ActionResultDTO> ReviewUserProfileByAdminAsync(ReviewUserProfileByAdminDTO dto, string reviewedById);
+        Task<ActionResultDTO> ReviewUserProfileByAdminAsync(ReviewUserProfileByAdminDTO dto, string? reviewedById, string? reviewedByUserName);
         Task<PagedResult<GetUsersProfilesDTO>> GetAllUsersProfilesForAdminAsync(PaginationFilter filter);
         Task<GetUsersProfilesDTO?> GetUserProfileByUserIdAsync(string userId);
     }

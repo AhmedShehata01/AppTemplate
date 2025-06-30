@@ -348,15 +348,6 @@ namespace Kindergarten.BLL.Services
             return true;
         }
 
-        //public async Task<bool> SoftDeleteKgAsync(int id)
-        //{
-        //    var kg = await _kgRepository.GetByIdAsync(id);
-        //    if (kg == null) return false;
-
-        //    await _kgRepository.SoftDeleteAsync(id);
-        //    return true;
-        //}
-
         public async Task<bool> SoftDeleteKgWithBranchesAsync(int id, string userId, string userName, string? userComment)
         {
             var kg = await _db.Kindergartens

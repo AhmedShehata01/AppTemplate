@@ -186,7 +186,7 @@ namespace Kindergarten.API.Controllers
                 }
 
                 // ✅ تنفيذ العملية
-                var result = await _iUserProfileService.ReviewUserProfileByAdminAsync(dto, currentUserId);
+                var result = await _iUserProfileService.ReviewUserProfileByAdminAsync(dto, currentUserId, CurrentUserName);
 
                 // ✅ إرجاع النتيجة بناءً على نجاح العملية
                 if (result.Success)

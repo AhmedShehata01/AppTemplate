@@ -88,7 +88,7 @@ namespace Kindergarten.API.Controllers
         {
             try
             {
-                var created = await _roleService.CreateRoleAsync(dto);
+                var created = await _roleService.CreateRoleAsync(dto , CurrentUserId , CurrentUserName);
                 return Ok(new ApiResponse<bool>
                 {
                     Code = 200,
@@ -123,7 +123,7 @@ namespace Kindergarten.API.Controllers
 
             try
             {
-                var updated = await _roleService.UpdateRoleAsync(dto);
+                var updated = await _roleService.UpdateRoleAsync(dto, CurrentUserId, CurrentUserName);
                 if (!updated)
                 {
                     return NotFound(new ApiResponse<string>
@@ -158,7 +158,7 @@ namespace Kindergarten.API.Controllers
         {
             try
             {
-                var toggled = await _roleService.ToggleRoleStatusAsync(id);
+                var toggled = await _roleService.ToggleRoleStatusAsync(id , CurrentUserId , CurrentUserName);
                 if (!toggled)
                 {
                     return NotFound(new ApiResponse<string>
@@ -193,7 +193,7 @@ namespace Kindergarten.API.Controllers
         {
             try
             {
-                var deleted = await _roleService.DeleteRoleAsync(id);
+                var deleted = await _roleService.DeleteRoleAsync(id, CurrentUserId , CurrentUserName);
                 if (!deleted)
                 {
                     return NotFound(new ApiResponse<string>
@@ -308,7 +308,7 @@ namespace Kindergarten.API.Controllers
         {
             try
             {
-                var removed = await _roleService.RemoveUserRoleAsync(userId, roleId);
+                var removed = await _roleService.RemoveUserRoleAsync(userId, roleId , CurrentUserId , CurrentUserName);
                 if (!removed)
                 {
                     return NotFound(new ApiResponse<string>

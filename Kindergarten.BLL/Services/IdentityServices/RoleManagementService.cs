@@ -2,12 +2,15 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using AutoMapper;
 using Kindergarten.BLL.Models;
+using Kindergarten.BLL.Models.ActivityLogDTO;
 using Kindergarten.BLL.Models.RoleManagementDTO;
 using Kindergarten.BLL.Models.UserManagementDTO;
 using Kindergarten.DAL.Database;
+using Kindergarten.DAL.Enum;
 using Kindergarten.DAL.Extend;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,13 +21,15 @@ namespace Kindergarten.BLL.Services.IdentityServices
         #region Prop
         private readonly ApplicationContext _context;
         private readonly IMapper _mapper;
+        private readonly IActivityLogService _activityLogService;
         #endregion
 
         #region Ctor
-        public RoleManagementService(ApplicationContext context, IMapper mapper)
+        public RoleManagementService(ApplicationContext context, IMapper mapper , IActivityLogService activityLogService)
         {
             _context = context;
             _mapper = mapper;
+            _activityLogService = activityLogService;
         }
         #endregion
 
@@ -84,7 +89,7 @@ namespace Kindergarten.BLL.Services.IdentityServices
             return role == null ? null : _mapper.Map<ApplicationRoleDTO>(role);
         }
 
-        public async Task<bool> CreateRoleAsync(CreateRoleDTO dto)
+        public async Task<bool> CreateRoleAsync(CreateRoleDTO dto, string? userId, string? userName)
         {
             var normalizedName = dto.Name.ToUpper();
 
@@ -104,10 +109,21 @@ namespace Kindergarten.BLL.Services.IdentityServices
             var newRole = _mapper.Map<ApplicationRole>(dto);
             _context.Roles.Add(newRole);
             await _context.SaveChangesAsync();
+
+            await _activityLogService.CreateAsync(new ActivityLogCreateDTO
+            {
+                EntityName = nameof(ApplicationRole),
+                EntityId = newRole.Id,
+                ActionType = ActivityActionType.Created,
+                SystemComment = $"تم إنشاء رول جديد باسم: {newRole.Name}",
+                PerformedByUserId = userId,
+                PerformedByUserName = userName,
+                NewValues = JsonSerializer.Serialize(_mapper.Map<ApplicationRoleDTO>(newRole))
+            });
             return true;
         }
 
-        public async Task<bool> UpdateRoleAsync(UpdateRoleDTO dto)
+        public async Task<bool> UpdateRoleAsync(UpdateRoleDTO dto, string? userId, string? userName)
         {
             var role = await _context.Roles.FirstOrDefaultAsync(r => r.Id == dto.Id);
             if (role == null || role.IsDeleted)
@@ -128,31 +144,47 @@ namespace Kindergarten.BLL.Services.IdentityServices
                 throw new Exception("Another role already uses the same name.");
             }
 
-            // 🛑 Prevent deactivation if currently active and new value is false
             if (role.IsActive && dto.IsActive == false)
             {
-                // 1. Check if assigned to users
-                var isAssignedToUsers = await _context.UserRoles
-                    .AnyAsync(ur => ur.RoleId == dto.Id);
+                var isAssignedToUsers = await _context.UserRoles.AnyAsync(ur => ur.RoleId == dto.Id);
                 if (isAssignedToUsers)
                     throw new Exception("Cannot deactivate role while it is assigned to users.");
 
-                // 2. Check if assigned to secured routes
-                var isAssignedToRoutes = await _context.RoleSecuredRoutes
-                    .AnyAsync(rsr => rsr.RoleId == dto.Id);
+                var isAssignedToRoutes = await _context.RoleSecuredRoutes.AnyAsync(rsr => rsr.RoleId == dto.Id);
                 if (isAssignedToRoutes)
                     throw new Exception("Cannot deactivate role while it is assigned to secured routes.");
             }
+
+            // ✨ Before change snapshot
+            var oldDto = _mapper.Map<ApplicationRoleDTO>(role);
+            var oldData = JsonSerializer.Serialize(oldDto);
 
             role.Name = dto.Name;
             role.IsActive = dto.IsActive;
 
             await _context.SaveChangesAsync();
+
+            // ✨ After change snapshot
+            var newDto = _mapper.Map<ApplicationRoleDTO>(role);
+            var newData = JsonSerializer.Serialize(newDto);
+
+            await _activityLogService.CreateAsync(new ActivityLogCreateDTO
+            {
+                EntityName = nameof(ApplicationRole),
+                EntityId = role.Id,
+                ActionType = ActivityActionType.Updated,
+                SystemComment = $"تم تعديل بيانات الرول: {role.Name}",
+                PerformedByUserId = userId,
+                PerformedByUserName = userName,
+                OldValues = oldData,
+                NewValues = newData
+            });
+
             return true;
         }
 
 
-        public async Task<bool> ToggleRoleStatusAsync(string roleId)
+        public async Task<bool> ToggleRoleStatusAsync(string roleId, string? userId, string? userName)
         {
             var role = await _context.Roles.FirstOrDefaultAsync(r => r.Id == roleId && !r.IsDeleted);
             if (role == null)
@@ -161,25 +193,46 @@ namespace Kindergarten.BLL.Services.IdentityServices
             // 🔒 Only check constraints if trying to deactivate
             if (role.IsActive)
             {
-                // ❌ Check if assigned to any users
                 var hasUsers = await _context.UserRoles.AnyAsync(ur => ur.RoleId == roleId);
                 if (hasUsers)
                     throw new Exception("Cannot deactivate role while it is assigned to users.");
 
-                // ❌ Check if assigned to any secured routes
                 var hasSecuredRoutes = await _context.RoleSecuredRoutes.AnyAsync(rsr => rsr.RoleId == roleId);
                 if (hasSecuredRoutes)
                     throw new Exception("Cannot deactivate role while it is assigned to secured routes.");
             }
 
+            // ✨ لقطة البيانات قبل التغيير
+            var oldDto = _mapper.Map<ApplicationRoleDTO>(role);
+            var oldData = JsonSerializer.Serialize(oldDto);
+
             // ✅ Toggle status
             role.IsActive = !role.IsActive;
             await _context.SaveChangesAsync();
+
+            var newDto = _mapper.Map<ApplicationRoleDTO>(role);
+            var newData = JsonSerializer.Serialize(newDto);
+
+            var actionType = role.IsActive ? ActivityActionType.Activated : ActivityActionType.Deactivated;
+
+            await _activityLogService.CreateAsync(new ActivityLogCreateDTO
+            {
+                EntityName = nameof(ApplicationRole),
+                EntityId = role.Id,
+                ActionType = actionType,
+                SystemComment = $"تم {(role.IsActive ? "تفعيل" : "تعطيل")} الرول: {role.Name}",
+                PerformedByUserId = userId,
+                PerformedByUserName = userName,
+                OldValues = oldData,
+                NewValues = newData
+            });
+
             return true;
         }
 
 
-        public async Task<bool> DeleteRoleAsync(string roleId)
+
+        public async Task<bool> DeleteRoleAsync(string roleId, string? userId, string? userName)
         {
             var role = await _context.Roles.FirstOrDefaultAsync(r => r.Id == roleId && !r.IsDeleted);
             if (role == null)
@@ -195,11 +248,30 @@ namespace Kindergarten.BLL.Services.IdentityServices
             if (hasSecuredRoutes)
                 throw new Exception("Cannot delete role while it is assigned to secured routes.");
 
+            // ✨ لقطة البيانات قبل الحذف
+            var oldDto = _mapper.Map<ApplicationRoleDTO>(role);
+            var oldData = JsonSerializer.Serialize(oldDto);
+
             // ✅ Soft delete
             role.IsDeleted = true;
             await _context.SaveChangesAsync();
+
+            // ✨ تسجيل الحذف في الـ ActivityLog
+            await _activityLogService.CreateAsync(new ActivityLogCreateDTO
+            {
+                EntityName = nameof(ApplicationRole),
+                EntityId = role.Id,
+                ActionType = ActivityActionType.Deleted,
+                SystemComment = $"تم حذف الرول: {role.Name}",
+                PerformedByUserId = userId,
+                PerformedByUserName = userName,
+                OldValues = oldData,
+                NewValues = null
+            });
+
             return true;
         }
+
 
 
         public async Task<List<RoleWithRoutesDTO>> GetRolesWithRoutesAsync()
@@ -236,17 +308,43 @@ namespace Kindergarten.BLL.Services.IdentityServices
             return _mapper.Map<List<ApplicationUserDTO>>(users);
         }
 
-        public async Task<bool> RemoveUserRoleAsync(string userId, string roleId)
+        public async Task<bool> RemoveUserRoleAsync(string userId, string roleId, string? performedByUserId, string? performedByUserName)
         {
             var userRole = await _context.UserRoles
                 .FirstOrDefaultAsync(ur => ur.UserId == userId && ur.RoleId == roleId);
 
-            if (userRole == null) return false;
+            if (userRole == null)
+                return false;
+
+            // نجيب معلومات المستخدم والدور للحفظ في اللوق
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+            var role = await _context.Roles.FirstOrDefaultAsync(r => r.Id == roleId);
 
             _context.UserRoles.Remove(userRole);
             await _context.SaveChangesAsync();
+
+            // سجل الحدث في الـ ActivityLog
+            await _activityLogService.CreateAsync(new ActivityLogCreateDTO
+            {
+                EntityName = "UserRole",
+                EntityId = $"{userId}-{roleId}",
+                ActionType = ActivityActionType.DeletedChildEntity, // حذف عنصر فرعي
+                SystemComment = $"تم إزالة الرول '{role?.Name}' من المستخدم '{user?.UserName}'.",
+                PerformedByUserId = performedByUserId,
+                PerformedByUserName = performedByUserName,
+                OldValues = JsonSerializer.Serialize(new
+                {
+                    UserId = userId,
+                    UserName = user?.UserName,
+                    RoleId = roleId,
+                    RoleName = role?.Name
+                }),
+                NewValues = null
+            });
+
             return true;
         }
+
 
         #endregion
     }
@@ -256,14 +354,14 @@ namespace Kindergarten.BLL.Services.IdentityServices
     {
         Task<PagedResult<ApplicationRoleDTO>> GetAllPaginatedAsync(PaginationFilter filter);
         Task<ApplicationRoleDTO> GetByIdAsync(string roleId);                          // Get role by ID
-        Task<bool> CreateRoleAsync(CreateRoleDTO dto);                      // Create a new role
-        Task<bool> UpdateRoleAsync(UpdateRoleDTO dto);                      // Update existing role
-        Task<bool> ToggleRoleStatusAsync(string roleId);                    // Toggle active/inactive
-        Task<bool> DeleteRoleAsync(string roleId);                          // Delete role
+        Task<bool> CreateRoleAsync(CreateRoleDTO dto , string? userId, string? userName);   // Create a new role
+        Task<bool> UpdateRoleAsync(UpdateRoleDTO dto, string? userId, string? userName);    // Update existing role
+        Task<bool> ToggleRoleStatusAsync(string roleId, string? userId, string? userName);                    // Toggle active/inactive
+        Task<bool> DeleteRoleAsync(string roleId, string? userId, string? userName);                          // Delete role
         Task<List<RoleWithRoutesDTO>> GetRolesWithRoutesAsync();            // Get all roles + routes
         Task<List<DropdownRoleDTO>> GetDropdownRolesAsync();
 
         Task<List<ApplicationUserDTO>> GetUsersByRoleAsync(string roleId);
-        Task<bool> RemoveUserRoleAsync(string userId, string roleId);
+        Task<bool> RemoveUserRoleAsync(string userId, string roleId, string? performedByUserId, string? performedByUserName);
     }
 }

@@ -167,6 +167,17 @@ namespace Kindergarten.BLL.Services
                 };
             }
 
+            // ✅ Log after successful password change
+            await _activityLogService.CreateAsync(new ActivityLogCreateDTO
+            {
+                EntityName = nameof(ApplicationUser),
+                EntityId = user.Id,
+                ActionType = ActivityActionType.ChangePassword,
+                SystemComment = $"User '{user.UserName}' changed password successfully.",
+                PerformedByUserId = user.Id,
+                PerformedByUserName = user.UserName
+            });
+
             return new ApiResponse<string>
             {
                 Code = 200,
@@ -419,6 +430,8 @@ namespace Kindergarten.BLL.Services
                     u.Provider == externalUser.Provider &&
                     u.ProviderUserId == externalUser.ProviderUserId);
 
+            bool isNewUser = false;
+
             if (user == null)
             {
                 user = new ApplicationUser
@@ -437,10 +450,25 @@ namespace Kindergarten.BLL.Services
                     var errors = string.Join(", ", result.Errors.Select(e => e.Description));
                     throw new Exception($"Failed to create user: {errors}");
                 }
+
+                isNewUser = true;
             }
 
             var roles = await _userManager.GetRolesAsync(user);
             var token = await GenerateJwtTokenAsync(user, roles);
+
+            // ✅ سجل الـ ActivityLog حسب الحالة
+            await _activityLogService.CreateAsync(new ActivityLogCreateDTO
+            {
+                EntityName = nameof(ApplicationUser),
+                EntityId = user.Id,
+                ActionType = isNewUser ? ActivityActionType.FirstExternalLogin : ActivityActionType.ExternalLogin,
+                SystemComment = isNewUser
+                    ? $"User '{user.UserName}' registered via {externalUser.Provider}."
+                    : $"User '{user.UserName}' logged in via {externalUser.Provider}.",
+                PerformedByUserId = user.Id,
+                PerformedByUserName = user.UserName
+            });
 
             return new AuthResponseDto
             {
@@ -452,6 +480,7 @@ namespace Kindergarten.BLL.Services
                 Provider = user.Provider
             };
         }
+
 
         #endregion
     }

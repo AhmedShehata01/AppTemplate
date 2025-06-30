@@ -7,9 +7,11 @@ using System.Threading.Tasks;
 using AutoMapper;
 using Kindergarten.BLL.Extensions;
 using Kindergarten.BLL.Models;
+using Kindergarten.BLL.Models.ActivityLogDTO;
 using Kindergarten.BLL.Models.DRBRADTO;
 using Kindergarten.DAL.Database;
 using Kindergarten.DAL.Entity.DRBRA;
+using Kindergarten.DAL.Enum;
 using Microsoft.EntityFrameworkCore;
 
 namespace Kindergarten.BLL.Services
@@ -19,14 +21,16 @@ namespace Kindergarten.BLL.Services
         #region Prop
         private readonly ApplicationContext _context;
         private readonly IMapper _mapper;
+        private readonly IActivityLogService _activityLogService;
 
         #endregion
 
         #region CTOR
-        public SecuredRouteService(ApplicationContext context, IMapper mapper)
+        public SecuredRouteService(ApplicationContext context, IMapper mapper, IActivityLogService activityLogService)
         {
             _context = context;
             _mapper = mapper;
+            _activityLogService = activityLogService;
         }
         #endregion
 
@@ -85,13 +89,13 @@ namespace Kindergarten.BLL.Services
             return _mapper.Map<SecuredRouteDTO>(route);
         }
 
-        public async Task<int> CreateRouteAsync(CreateSecuredRouteDTO dto, string createdById)
+        public async Task<int> CreateRouteAsync(CreateSecuredRouteDTO dto, string? performedByUserId, string? performedByUserName)
         {
             var route = new SecuredRoute
             {
                 BasePath = dto.BasePath,
                 Description = dto.Description,
-                CreatedById = createdById,
+                CreatedById = performedByUserId,
                 CreatedOn = DateTime.Now,
                 RoleSecuredRoutes = dto.RoleIds?.Select(roleId => new RoleSecuredRoute
                 {
@@ -101,10 +105,31 @@ namespace Kindergarten.BLL.Services
 
             _context.SecuredRoutes.Add(route);
             await _context.SaveChangesAsync();
+
+            // سجل ActivityLog لتسجيل إنشاء الراوت
+            var assignedRolesJson = System.Text.Json.JsonSerializer.Serialize(dto.RoleIds ?? new List<string>());
+            await _activityLogService.CreateAsync(new ActivityLogCreateDTO
+            {
+                EntityName = "SecuredRoute",
+                EntityId = route.Id.ToString(),
+                ActionType = ActivityActionType.Created,
+                SystemComment = $"تم إنشاء مسار مؤمن جديد: {route.BasePath}.",
+                PerformedByUserId = performedByUserId,
+                PerformedByUserName = performedByUserName,
+                OldValues = null,
+                NewValues = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    route.BasePath,
+                    route.Description,
+                    AssignedRoles = assignedRolesJson
+                })
+            });
+
             return route.Id;
         }
 
-        public async Task<bool> UpdateRouteAsync(UpdateSecuredRouteDTO dto)
+
+        public async Task<bool> UpdateRouteAsync(UpdateSecuredRouteDTO dto, string? performedByUserId, string? performedByUserName)
         {
             var existing = await _context.SecuredRoutes
                 .Include(r => r.RoleSecuredRoutes)
@@ -115,6 +140,15 @@ namespace Kindergarten.BLL.Services
             // تأكد مفيش تعارض في BasePath
             if (await _context.SecuredRoutes.AnyAsync(r => r.Id != dto.Id && r.BasePath == dto.BasePath))
                 throw new Exception("Another route already uses the same base path.");
+
+            // خذ نسخة من القيم القديمة (قبل التحديث)
+            var oldValues = new
+            {
+                existing.BasePath,
+                existing.Description,
+                RoleIds = existing.RoleSecuredRoutes.Select(rr => rr.RoleId).ToList()
+            };
+            var oldValuesJson = System.Text.Json.JsonSerializer.Serialize(oldValues);
 
             // ✏️ تحديث البيانات
             existing.BasePath = dto.BasePath;
@@ -133,32 +167,88 @@ namespace Kindergarten.BLL.Services
             }
 
             await _context.SaveChangesAsync();
+
+            // سجل القيم الجديدة (بعد التحديث)
+            var newValues = new
+            {
+                dto.BasePath,
+                dto.Description,
+                RoleIds = dto.RoleIds ?? new List<string>()
+            };
+            var newValuesJson = System.Text.Json.JsonSerializer.Serialize(newValues);
+
+            // إنشاء سجل النشاط
+            await _activityLogService.CreateAsync(new ActivityLogCreateDTO
+            {
+                EntityName = "SecuredRoute",
+                EntityId = existing.Id.ToString(),
+                ActionType = ActivityActionType.Updated,
+                SystemComment = $"تم تحديث مسار مؤمن: {existing.BasePath}.",
+                PerformedByUserId = performedByUserId,
+                PerformedByUserName = performedByUserName,
+                OldValues = oldValuesJson,
+                NewValues = newValuesJson
+            });
+
             return true;
         }
 
-        public async Task<bool> DeleteRouteAsync(int id)
+
+        public async Task<bool> DeleteRouteAsync(int id, string? performedByUserId, string? performedByUserName)
         {
             var entity = await _context.SecuredRoutes
                 .Include(r => r.RoleSecuredRoutes)
+                .ThenInclude(rr => rr.Role)
                 .FirstOrDefaultAsync(r => r.Id == id);
 
             if (entity == null) return false;
 
+            // تجهيز بيانات قديمة لتسجيلها في ال ActivityLog
+            var oldValues = new
+            {
+                entity.Id,
+                entity.BasePath,
+                entity.Description,
+                RoleIds = entity.RoleSecuredRoutes.Select(rr => rr.RoleId).ToList()
+            };
+            var oldValuesJson = System.Text.Json.JsonSerializer.Serialize(oldValues);
+
+            // إزالة العلاقات المرتبطة
             _context.RoleSecuredRoutes.RemoveRange(entity.RoleSecuredRoutes);
             _context.SecuredRoutes.Remove(entity);
+
             await _context.SaveChangesAsync();
+
+            // تسجيل الحدث
+            await _activityLogService.CreateAsync(new ActivityLogCreateDTO
+            {
+                EntityName = "SecuredRoute",
+                EntityId = id.ToString(),
+                ActionType = ActivityActionType.Deleted,
+                SystemComment = $"تم حذف مسار مؤمن: {entity.BasePath}.",
+                PerformedByUserId = performedByUserId,
+                PerformedByUserName = performedByUserName,
+                OldValues = oldValuesJson,
+                NewValues = null
+            });
+
             return true;
         }
 
-        public async Task<bool> AssignRolesAsync(AssignRolesToRouteDTO dto)
+
+        public async Task<bool> AssignRolesAsync(AssignRolesToRouteDTO dto, string? performedByUserId, string? performedByUserName)
         {
             var route = await _context.SecuredRoutes
                 .Include(r => r.RoleSecuredRoutes)
+                .ThenInclude(rr => rr.Role)
                 .FirstOrDefaultAsync(r => r.Id == dto.SecuredRouteId);
             if (route == null) return false;
 
             var existingRoleIds = route.RoleSecuredRoutes.Select(r => r.RoleId).ToHashSet();
-            var newRoleIds = dto.RoleIds.Except(existingRoleIds);
+            var newRoleIds = dto.RoleIds.Except(existingRoleIds).ToList();
+
+            if (!newRoleIds.Any())
+                return true;
 
             foreach (var roleId in newRoleIds)
             {
@@ -169,23 +259,61 @@ namespace Kindergarten.BLL.Services
                 });
             }
 
-            if (!newRoleIds.Any())
-                return true;
-
             await _context.SaveChangesAsync();
+
+            // تسجيل الـ ActivityLog لل Roles الجديدة المُضافة
+            var addedRolesNames = await _context.Roles
+                .Where(r => newRoleIds.Contains(r.Id))
+                .Select(r => r.Name)
+                .ToListAsync();
+
+            var newValuesJson = System.Text.Json.JsonSerializer.Serialize(addedRolesNames);
+
+            await _activityLogService.CreateAsync(new ActivityLogCreateDTO
+            {
+                EntityName = "SecuredRouteRoles",
+                EntityId = dto.SecuredRouteId.ToString(),
+                ActionType = ActivityActionType.Updated,
+                SystemComment = $"تم إضافة الأدوار: {string.Join(", ", addedRolesNames)} للمسار المؤمّن: {route.BasePath}.",
+                PerformedByUserId = performedByUserId,
+                PerformedByUserName = performedByUserName,
+                OldValues = null,
+                NewValues = newValuesJson
+            });
+
             return true;
         }
 
-        public async Task<bool> UnassignRoleAsync(UnassignRoleFromRouteDTO dto)
+
+        public async Task<bool> UnassignRoleAsync(UnassignRoleFromRouteDTO dto, string? performedByUserId, string? performedByUserName)
         {
             var record = await _context.RoleSecuredRoutes
+                .Include(r => r.Role)
+                .Include(r => r.SecuredRoute)
                 .FirstOrDefaultAsync(r => r.SecuredRouteId == dto.SecuredRouteId && r.RoleId == dto.RoleId);
             if (record == null) return false;
 
             _context.RoleSecuredRoutes.Remove(record);
             await _context.SaveChangesAsync();
+
+            var roleName = record.Role?.Name ?? "Unknown Role";
+            var routePath = record.SecuredRoute?.BasePath ?? "Unknown Route";
+
+            await _activityLogService.CreateAsync(new ActivityLogCreateDTO
+            {
+                EntityName = "SecuredRouteRoles",
+                EntityId = dto.SecuredRouteId.ToString(),
+                ActionType = ActivityActionType.Updated,
+                SystemComment = $"تم إزالة الدور '{roleName}' من المسار المؤمّن '{routePath}'.",
+                PerformedByUserId = performedByUserId,
+                PerformedByUserName = performedByUserName,
+                OldValues = System.Text.Json.JsonSerializer.Serialize(roleName),
+                NewValues = null
+            });
+
             return true;
         }
+
 
         public async Task<List<RouteWithRolesDTO>> GetRoutesWithRolesAsync()
         {
@@ -214,11 +342,11 @@ namespace Kindergarten.BLL.Services
     {
         Task<PagedResult<SecuredRouteDTO>> GetAllRoutesAsync(PaginationFilter filter);
         Task<SecuredRouteDTO> GetRouteByIdAsync(int id);
-        Task<int> CreateRouteAsync(CreateSecuredRouteDTO dto, string createdById);
-        Task<bool> UpdateRouteAsync(UpdateSecuredRouteDTO dto);
-        Task<bool> DeleteRouteAsync(int id);
-        Task<bool> AssignRolesAsync(AssignRolesToRouteDTO dto);
-        Task<bool> UnassignRoleAsync(UnassignRoleFromRouteDTO dto);
+        Task<int> CreateRouteAsync(CreateSecuredRouteDTO dto, string? performedByUserId, string? performedByUserName);
+        Task<bool> UpdateRouteAsync(UpdateSecuredRouteDTO dto, string? performedByUserId, string? performedByUserName);
+        Task<bool> DeleteRouteAsync(int id, string? performedByUserId, string? performedByUserName);
+        Task<bool> AssignRolesAsync(AssignRolesToRouteDTO dto, string? performedByUserId, string? performedByUserName);
+        Task<bool> UnassignRoleAsync(UnassignRoleFromRouteDTO dto, string? performedByUserId, string? performedByUserName);
         Task<List<RouteWithRolesDTO>> GetRoutesWithRolesAsync();
         Task<bool> IsRoleAssignedToAnySecuredRouteAsync(string roleId);
 
