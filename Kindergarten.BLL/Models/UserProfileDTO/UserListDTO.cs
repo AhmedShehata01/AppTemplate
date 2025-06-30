@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Kindergarten.BLL.Models.UsersManagementDTO
+namespace Kindergarten.BLL.Models.UserProfileDTO
 {
     public class UserListDTO
     {

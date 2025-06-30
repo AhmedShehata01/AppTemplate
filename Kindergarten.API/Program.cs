@@ -8,6 +8,7 @@ using Kindergarten.BLL.Middleware;
 using Kindergarten.BLL.Repository;
 using Kindergarten.BLL.Services;
 using Kindergarten.BLL.Services.AppSecurity;
+using Kindergarten.BLL.Services.IdentityServices;
 using Kindergarten.BLL.Services.SendEmail;
 using Kindergarten.DAL.Database;
 using Kindergarten.DAL.Extend;
@@ -183,11 +184,15 @@ try
     builder.Services.AddScoped<IKindergartenService, KindergartenService>();
 
     builder.Services.AddScoped<IEmailService, EmailService>();
-    builder.Services.AddScoped<ICustomUsersService, CustomUsersService>();
+    builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 
 
 
     builder.Services.AddScoped<IRoleManagementService, RoleManagementService>();
+    builder.Services.AddScoped<IUserManagementService, UserManagementService>();
+    builder.Services.AddScoped<IUserClaimManagementService, UserClaimManagementService>();
+    builder.Services.AddScoped<IUserRoleManagementService, UserRoleManagementService>();
+
     builder.Services.AddScoped<ISecuredRouteService, SecuredRouteService>();
     builder.Services.AddScoped<ISidebarService, SidebarService>();
     builder.Services.AddScoped<IActivityLogService, ActivityLogService>();

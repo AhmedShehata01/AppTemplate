@@ -1,16 +1,17 @@
 ﻿using Kindergarten.BLL.Helper;
-using Kindergarten.BLL.Models;
 using Kindergarten.BLL.Models.RoleManagementDTO;
-using Kindergarten.BLL.Services;
-using Microsoft.AspNetCore.Authorization;
+using Kindergarten.BLL.Models;
+using Kindergarten.BLL.Services.IdentityServices;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using Kindergarten.BLL.Models.UserManagementDTO;
 
 namespace Kindergarten.API.Controllers
 {
-    [Authorize(Roles = "Super Admin,Admin")]
+    [Authorize(Roles = "Super Admin, Admin")]
     public class RoleManagementController : BaseController
     {
-        #region Props
+        #region Prop
         private readonly IRoleManagementService _roleService;
         #endregion
 
@@ -22,13 +23,12 @@ namespace Kindergarten.API.Controllers
         #endregion
 
         #region Actions
-
         [HttpGet("getAllPaginated")]
         public async Task<IActionResult> GetAllPaginated([FromQuery] PaginationFilter filter)
         {
             try
             {
-                var result = await _roleService.GetAllRolesAsync(filter);
+                var result = await _roleService.GetAllPaginatedAsync(filter);
                 return Ok(new ApiResponse<PagedResult<ApplicationRoleDTO>>
                 {
                     Code = 200,
@@ -49,123 +49,293 @@ namespace Kindergarten.API.Controllers
 
 
         [HttpGet("getById/{id}")]
-        public async Task<ActionResult<ApiResponse<ApplicationRoleDTO>>> GetById(string id)
-        {
-            var result = await _roleService.GetRoleByIdAsync(id);
-            if (result == null)
-                return NotFound(new ApiResponse<string> { Code = 404, Status = "NotFound", Result = "Role not found" });
-
-            return Ok(new ApiResponse<ApplicationRoleDTO>
-            {
-                Code = 200,
-                Status = "Success",
-                Result = result
-            });
-        }
-
-        [HttpPost("create")]
-        public async Task<ActionResult<ApiResponse<string>>> Create([FromBody] CreateRoleDTO dto)
+        public async Task<IActionResult> GetById(string id)
         {
             try
             {
-                var roleId = await _roleService.CreateRoleAsync(dto);
-                return Ok(new ApiResponse<string>
+                var role = await _roleService.GetByIdAsync(id);
+                if (role == null)
                 {
-                    Code = 201,
-                    Status = "Created",
-                    Result = roleId
+                    return NotFound(new ApiResponse<string>
+                    {
+                        Code = 404,
+                        Status = "Not Found",
+                        Result = "Role not found."
+                    });
+                }
+
+                return Ok(new ApiResponse<ApplicationRoleDTO>
+                {
+                    Code = 200,
+                    Status = "Success",
+                    Result = role
                 });
             }
             catch (Exception ex)
             {
-                return BadRequest(new ApiResponse<string>
+                return StatusCode(500, new ApiResponse<string>
                 {
-                    Code = 400,
+                    Code = 500,
                     Status = "Error",
                     Result = ex.Message
                 });
             }
         }
 
-        [HttpPut("update")]
-        public async Task<ActionResult<ApiResponse<bool>>> Update([FromBody] UpdateRoleDTO dto)
+
+        [HttpPost("create")]
+        public async Task<IActionResult> Create(CreateRoleDTO dto)
         {
+            try
+            {
+                var created = await _roleService.CreateRoleAsync(dto);
+                return Ok(new ApiResponse<bool>
+                {
+                    Code = 200,
+                    Status = "Success",
+                    Result = created
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<string>
+                {
+                    Code = 500,
+                    Status = "Error",
+                    Result = ex.Message
+                });
+            }
+        }
+
+
+        [HttpPut("update/{id}")]
+        public async Task<IActionResult> Update(string id, UpdateRoleDTO dto)
+        {
+            if (id != dto.Id)
+            {
+                return BadRequest(new ApiResponse<string>
+                {
+                    Code = 400,
+                    Status = "Invalid",
+                    Result = "Mismatched role ID."
+                });
+            }
+
             try
             {
                 var updated = await _roleService.UpdateRoleAsync(dto);
                 if (!updated)
-                    return NotFound(new ApiResponse<string> { Code = 404, Status = "NotFound", Result = "Role not found" });
+                {
+                    return NotFound(new ApiResponse<string>
+                    {
+                        Code = 404,
+                        Status = "Not Found",
+                        Result = "Role not found."
+                    });
+                }
 
                 return Ok(new ApiResponse<bool>
                 {
                     Code = 200,
-                    Status = "Updated",
+                    Status = "Success",
                     Result = true
                 });
             }
             catch (Exception ex)
             {
-                return BadRequest(new ApiResponse<string>
+                return StatusCode(500, new ApiResponse<string>
                 {
-                    Code = 400,
+                    Code = 500,
                     Status = "Error",
                     Result = ex.Message
                 });
             }
         }
 
-        [HttpPut("toggle-status")]
-        public async Task<ActionResult<ApiResponse<bool>>> ToggleStatus([FromBody] ToggleRoleStatusDTO dto)
+
+        [HttpPut("toggle-status/{id}")]
+        public async Task<IActionResult> ToggleStatus(string id)
         {
-            var toggled = await _roleService.ToggleRoleStatusAsync(dto);
-            if (!toggled)
-                return NotFound(new ApiResponse<string>
+            try
+            {
+                var toggled = await _roleService.ToggleRoleStatusAsync(id);
+                if (!toggled)
                 {
-                    Code = 404,
-                    Status = "NotFound",
-                    Result = "Role not found"
+                    return NotFound(new ApiResponse<string>
+                    {
+                        Code = 404,
+                        Status = "Not Found",
+                        Result = "Role not found or deleted."
+                    });
+                }
+
+                return Ok(new ApiResponse<bool>
+                {
+                    Code = 200,
+                    Status = "Success",
+                    Result = true
                 });
-
-            return Ok(new ApiResponse<bool>
+            }
+            catch (Exception ex)
             {
-                Code = 200,
-                Status = "StatusChanged",
-                Result = true
-            });
+                return StatusCode(500, new ApiResponse<string>
+                {
+                    Code = 500,
+                    Status = "Error",
+                    Result = ex.Message
+                });
+            }
         }
 
-        [HttpGet("roles-with-routes")]
-        public async Task<ActionResult<ApiResponse<List<RoleWithRoutesDTO>>>> GetRolesWithRoutes()
-        {
-            var result = await _roleService.GetRolesWithRoutesAsync();
-            return Ok(new ApiResponse<List<RoleWithRoutesDTO>>
-            {
-                Code = 200,
-                Status = "Success",
-                Result = result
-            });
-        }
 
         [HttpDelete("delete/{id}")]
-        public async Task<ActionResult<ApiResponse<bool>>> Delete(string id)
+        public async Task<IActionResult> Delete(string id)
         {
-            var deleted = await _roleService.DeleteRoleAsync(id);
-            if (!deleted)
-                return NotFound(new ApiResponse<string>
-                {
-                    Code = 404,
-                    Status = "NotFound",
-                    Result = "Role not found or already deleted"
-                });
-
-            return Ok(new ApiResponse<bool>
+            try
             {
-                Code = 200,
-                Status = "Deleted",
-                Result = true
-            });
+                var deleted = await _roleService.DeleteRoleAsync(id);
+                if (!deleted)
+                {
+                    return NotFound(new ApiResponse<string>
+                    {
+                        Code = 404,
+                        Status = "Not Found",
+                        Result = "Role not found."
+                    });
+                }
+
+                return Ok(new ApiResponse<bool>
+                {
+                    Code = 200,
+                    Status = "Success",
+                    Result = true
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<string>
+                {
+                    Code = 500,
+                    Status = "Error",
+                    Result = ex.Message
+                });
+            }
         }
 
+
+
+        [HttpGet("roles-with-routes")]
+        public async Task<IActionResult> GetRolesWithRoutes()
+        {
+            try
+            {
+                var roles = await _roleService.GetRolesWithRoutesAsync();
+                return Ok(new ApiResponse<List<RoleWithRoutesDTO>>
+                {
+                    Code = 200,
+                    Status = "Success",
+                    Result = roles
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<string>
+                {
+                    Code = 500,
+                    Status = "Error",
+                    Result = ex.Message
+                });
+            }
+        }
+
+
+        [HttpGet("roles-dropdown")]
+        public async Task<IActionResult> GetDropdownRoles()
+        {
+            try
+            {
+                var roles = await _roleService.GetDropdownRolesAsync();
+                return Ok(new ApiResponse<List<DropdownRoleDTO>>
+                {
+                    Code = 200,
+                    Status = "Success",
+                    Result = roles
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<string>
+                {
+                    Code = 500,
+                    Status = "Error",
+                    Result = ex.Message
+                });
+            }
+        }
+
+        /// <summary>
+        /// Get all users assigned to a specific role
+        /// </summary>
+        [HttpGet("{roleId}/users")]
+        public async Task<IActionResult> GetUsersByRole(string roleId)
+        {
+            try
+            {
+                var users = await _roleService.GetUsersByRoleAsync(roleId);
+                return Ok(new ApiResponse<List<ApplicationUserDTO>>
+                {
+                    Code = 200,
+                    Status = "Success",
+                    Result = users
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<string>
+                {
+                    Code = 500,
+                    Status = "Error",
+                    Result = "An error occurred while retrieving users."
+                });
+            }
+        }
+
+        /// <summary>
+        /// Remove a user from a specific role
+        /// </summary>
+        [HttpDelete("{roleId}/users/{userId}")]
+        public async Task<IActionResult> RemoveUserFromRole(string roleId, string userId)
+        {
+            try
+            {
+                var removed = await _roleService.RemoveUserRoleAsync(userId, roleId);
+                if (!removed)
+                {
+                    return NotFound(new ApiResponse<string>
+                    {
+                        Code = 404,
+                        Status = "Not Found",
+                        Result = "User or role assignment not found."
+                    });
+                }
+
+                return Ok(new ApiResponse<bool>
+                {
+                    Code = 200,
+                    Status = "Success",
+                    Result = true
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<string>
+                {
+                    Code = 500,
+                    Status = "Error",
+                    Result = $"An error occurred while removing user from role , {ex}."
+                });
+            }
+        }
         #endregion
     }
 }

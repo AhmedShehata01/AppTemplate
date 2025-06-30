@@ -1,109 +1,45 @@
-﻿using System.Linq;
-using System.Net;
+﻿using System.Net;
 using System.Security.Claims;
-using AutoMapper;
 using Kindergarten.BLL.Helper;
 using Kindergarten.BLL.Models;
-using Kindergarten.BLL.Models.UsersManagementDTO;
-using Kindergarten.BLL.Services;
-using Kindergarten.DAL.Database;
-using Kindergarten.DAL.Entity;
-using Kindergarten.DAL.Enum;
-using Kindergarten.DAL.Extend;
+using Kindergarten.BLL.Models.ClaimsDTO;
+using Kindergarten.BLL.Models.UserManagementDTO;
+using Kindergarten.BLL.Services.IdentityServices;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace Kindergarten.API.Controllers
 {
     [Authorize(Roles = "Admin,Super Admin")]
     public class UserController : BaseController
     {
-
-        #region Prop
-        private readonly UserManager<ApplicationUser> _userManager;
-        private readonly RoleManager<ApplicationRole> _roleManager;
-        private readonly ApplicationContext db;
-        private readonly ICustomUsersService _customUserService;
-        private readonly IMapper _mapper;
+        #region Services
+        private readonly IUserManagementService _userManagementService;
+        private readonly IUserRoleManagementService _userRoleManagementService;
+        private readonly IUserClaimManagementService _userClaimManagementService;
         #endregion
 
-
         #region CTOR
-        public UserController(UserManager<ApplicationUser> _userManager,
-                                        RoleManager<ApplicationRole> _roleManager,
-                                        ApplicationContext db,
-                                        ICustomUsersService customUserService,
-                                        IMapper mapper)
+        public UserController(
+            IUserManagementService userManagementService,
+            IUserRoleManagementService userRoleManagementService,
+            IUserClaimManagementService userClaimManagementService)
         {
-            this._userManager = _userManager;
-            this._roleManager = _roleManager;
-            this.db = db;
-            this._customUserService = customUserService;
-            _mapper = mapper;
+            _userManagementService = userManagementService;
+            _userRoleManagementService = userRoleManagementService;
+            _userClaimManagementService = userClaimManagementService;
         }
         #endregion
 
-
         #region Actions
+
         [HttpGet("GetAllPaginated")]
         public async Task<IActionResult> GetAllPaginated([FromQuery] PaginationFilter filter)
         {
             try
             {
-                var query = _userManager.Users.AsQueryable();
-
-                // 🔍 Apply Search
-                if (!string.IsNullOrWhiteSpace(filter.SearchText))
-                {
-                    var search = filter.SearchText.Trim().ToLower();
-                    query = query.Where(u =>
-                        u.UserName.ToLower().Contains(search) ||
-                        u.Email.ToLower().Contains(search)
-                    );
-                }
-
-                // 🔢 Total count before pagination
-                var totalCount = await query.CountAsync();
-
-                // 🔃 Apply Sorting
-                if (!string.IsNullOrWhiteSpace(filter.SortBy))
-                {
-                    var isDesc = filter.SortDirection?.ToLower() == "desc";
-                    switch (filter.SortBy.ToLower())
-                    {
-                        case "username":
-                            query = isDesc ? query.OrderByDescending(u => u.UserName) : query.OrderBy(u => u.UserName);
-                            break;
-                        case "email":
-                            query = isDesc ? query.OrderByDescending(u => u.Email) : query.OrderBy(u => u.Email);
-                            break;
-                        default:
-                            query = query.OrderBy(u => u.UserName);
-                            break;
-                    }
-                }
-                else
-                {
-                    query = query.OrderBy(u => u.UserName); // Default order
-                }
-
-                // 📊 Apply Pagination
-                var users = await query
-                    .Skip((filter.Page - 1) * filter.PageSize)
-                    .Take(filter.PageSize)
-                    .ToListAsync();
-
-                var result = new PagedResult<UserListDTO>
-                {
-                    Data = _mapper.Map<List<UserListDTO>>(users),
-                    TotalCount = totalCount,
-                    Page = filter.Page,
-                    PageSize = filter.PageSize
-                };
-
-                return Ok(new ApiResponse<PagedResult<UserListDTO>>
+                var result = await _userManagementService.GetAllPaginatedAsync(filter);
+                return Ok(new ApiResponse<PagedResult<ApplicationUserDTO>>
                 {
                     Code = 200,
                     Status = "Success",
@@ -121,224 +57,364 @@ namespace Kindergarten.API.Controllers
             }
         }
 
-        // GET /api/user/{id}
+
         [HttpGet("{id}")]
         public async Task<IActionResult> GetUserById(string id)
         {
-            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-            if (!User.IsInRole("Admin") && !User.IsInRole("Super Admin") && currentUserId != id)
-                return Forbid();
-
-            var user = await _userManager.FindByIdAsync(id);
-            if (user == null) return NotFound();
-
-            return Ok(new
+            try
             {
-                user.Id,
-                user.UserName,
-                user.Email
-            });
+                var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (!User.IsInRole("Admin") && !User.IsInRole("Super Admin") && currentUserId != id)
+                {
+                    return StatusCode((int)HttpStatusCode.Forbidden, new ApiResponse<string>
+                    {
+                        Code = 403,
+                        Status = "Forbidden",
+                        Result = "You are not authorized to view this user."
+                    });
+                }
+
+                var user = await _userManagementService.GetByIdAsync(id);
+                if (user == null)
+                {
+                    return NotFound(new ApiResponse<string>
+                    {
+                        Code = 404,
+                        Status = "NotFound",
+                        Result = "User not found."
+                    });
+                }
+
+                return Ok(new ApiResponse<ApplicationUserDTO>
+                {
+                    Code = 200,
+                    Status = "Success",
+                    Result = user
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<string>
+                {
+                    Code = 500,
+                    Status = "Error",
+                    Result = ex.Message
+                });
+            }
         }
 
-        // PUT /api/user/{id}
+
         [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateUser(string id, [FromBody] ApplicationUser updatedUser)
+        public async Task<IActionResult> UpdateUser(string id, [FromBody] UpdateApplicationUserDTO updatedUser)
         {
-            if (id != updatedUser.Id)
-                return BadRequest("User ID mismatch");
+            try
+            {
+                if (id != updatedUser.Id)
+                {
+                    return BadRequest(new ApiResponse<string>
+                    {
+                        Code = 400,
+                        Status = "Error",
+                        Result = "User ID mismatch"
+                    });
+                }
 
-            var user = await _userManager.FindByIdAsync(id);
-            if (user == null) return NotFound();
+                var success = await _userManagementService.UpdateAsync(id, updatedUser);
+                if (!success)
+                {
+                    return NotFound(new ApiResponse<string>
+                    {
+                        Code = 404,
+                        Status = "NotFound",
+                        Result = "User not found."
+                    });
+                }
 
-            user.UserName = updatedUser.UserName;
-            user.Email = updatedUser.Email;
-
-            var result = await _userManager.UpdateAsync(user);
-            if (!result.Succeeded)
-                return BadRequest(result.Errors);
-
-            return Ok(updatedUser);
+                return Ok(new ApiResponse<bool>
+                {
+                    Code = 200,
+                    Status = "Updated",
+                    Result = true
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<string>
+                {
+                    Code = 500,
+                    Status = "Error",
+                    Result = ex.Message
+                });
+            }
         }
 
-        // DELETE /api/user/{id}
+
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteUser(string id)
         {
-            var user = await _userManager.FindByIdAsync(id);
-            if (user == null) return NotFound();
+            try
+            {
+                var success = await _userManagementService.DeleteAsync(id);
+                if (!success)
+                {
+                    return NotFound(new ApiResponse<string>
+                    {
+                        Code = 404,
+                        Status = "NotFound",
+                        Result = "User not found."
+                    });
+                }
 
-            var result = await _userManager.DeleteAsync(user);
-            if (!result.Succeeded)
-                return BadRequest(result.Errors);
-
-            return Ok(new { message = $"User with id '{id}' deleted successfully." });
+                return Ok(new ApiResponse<string>
+                {
+                    Code = 200,
+                    Status = "Deleted",
+                    Result = $"User with id '{id}' deleted successfully."
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<string>
+                {
+                    Code = 500,
+                    Status = "Error",
+                    Result = ex.Message
+                });
+            }
         }
 
-        // GET /api/roles
+
         [HttpGet("allroles")]
-        public IActionResult GetAllRoles()
+        public async Task<IActionResult> GetAllRoles()
         {
-            var roles = _roleManager.Roles.Select(r => r.Name).ToList();
-            return Ok(roles);
+            try
+            {
+                var roles = await _userRoleManagementService.GetAllRolesAsync();
+                return Ok(new ApiResponse<List<string>>
+                {
+                    Code = 200,
+                    Status = "Success",
+                    Result = roles
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<string>
+                {
+                    Code = 500,
+                    Status = "Error",
+                    Result = ex.Message
+                });
+            }
         }
 
-        // GET /api/user/{id}/roles
-        [HttpGet("{id}/roles")]
+
+        [HttpGet("roles/{id}")]
         public async Task<IActionResult> GetUserRoles(string id)
         {
-            var user = await _userManager.FindByIdAsync(id);
-            if (user == null) return NotFound();
+            try
+            {
+                var roles = await _userRoleManagementService.GetUserRolesAsync(id);
+                if (roles == null)
+                {
+                    return NotFound(new ApiResponse<string>
+                    {
+                        Code = 404,
+                        Status = "NotFound",
+                        Result = "User not found."
+                    });
+                }
 
-            var roles = await _userManager.GetRolesAsync(user);
-            return Ok(roles);
+                return Ok(new ApiResponse<List<string>>
+                {
+                    Code = 200,
+                    Status = "Success",
+                    Result = roles
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<string>
+                {
+                    Code = 500,
+                    Status = "Error",
+                    Result = ex.Message
+                });
+            }
         }
 
-        // POST /api/user/{id}/roles
-        [HttpPost("{id}/roles")]
+
+        [HttpPost("roles/{id}")]
         public async Task<IActionResult> UpdateUserRoles(string id, [FromBody] List<string> roles)
         {
-            var user = await _userManager.FindByIdAsync(id);
-            if (user == null) return NotFound();
+            try
+            {
+                var result = await _userRoleManagementService.AssignRolesToUserAsync(id, roles);
+                if (!result)
+                {
+                    return BadRequest(new ApiResponse<string>
+                    {
+                        Code = 400,
+                        Status = "Error",
+                        Result = "Failed to update roles."
+                    });
+                }
 
-            var validRoles = _roleManager.Roles.Select(r => r.Name).ToList();
-            if (roles.Except(validRoles).Any())
-                return BadRequest("Invalid roles specified");
-
-            var currentRoles = await _userManager.GetRolesAsync(user);
-            var removeResult = await _userManager.RemoveFromRolesAsync(user, currentRoles);
-            if (!removeResult.Succeeded)
-                return BadRequest(removeResult.Errors);
-
-            var addResult = await _userManager.AddToRolesAsync(user, roles);
-            if (!addResult.Succeeded)
-                return BadRequest(addResult.Errors);
-
-            // إرجاع الأدوار المحدثة
-            var updatedRoles = await _userManager.GetRolesAsync(user);
-            return Ok(updatedRoles);
+                var updatedRoles = await _userRoleManagementService.GetUserRolesAsync(id);
+                return Ok(new ApiResponse<List<string>>
+                {
+                    Code = 200,
+                    Status = "Updated",
+                    Result = updatedRoles
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<string>
+                {
+                    Code = 500,
+                    Status = "Error",
+                    Result = ex.Message
+                });
+            }
         }
 
 
-        // GET /api/claims
         [HttpGet("allclaims")]
-        public IActionResult GetAllClaims()
+        public async Task<IActionResult> GetAllClaims()
         {
-            var claims = ClaimsStore.AllClaims
-                .Select(c => new { c.Type, c.Value })
-                .ToList();
-
-            return Ok(claims);
+            try
+            {
+                var claims = await _userClaimManagementService.GetAllClaimsAsync();
+                return Ok(new ApiResponse<List<ClaimDTO>>
+                {
+                    Code = 200,
+                    Status = "Success",
+                    Result = claims
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<string>
+                {
+                    Code = 500,
+                    Status = "Error",
+                    Result = ex.Message
+                });
+            }
         }
 
-        // GET /api/user/{id}/claims
-        [HttpGet("{id}/claims")]
+
+        [HttpGet("claims/{id}")]
         public async Task<IActionResult> GetUserClaims(string id)
         {
-            var user = await _userManager.FindByIdAsync(id);
-            if (user == null) return NotFound();
+            try
+            {
+                var result = await _userClaimManagementService.GetUserClaimsAsync(id);
+                if (result == null)
+                {
+                    return NotFound(new ApiResponse<string>
+                    {
+                        Code = 404,
+                        Status = "NotFound",
+                        Result = "User not found."
+                    });
+                }
 
-            var claims = await _userManager.GetClaimsAsync(user);
-            var claimTypes = claims.Select(c => c.Type).ToList();
-
-            return Ok(claimTypes);
+                return Ok(new ApiResponse<List<ClaimDTO>>
+                {
+                    Code = 200,
+                    Status = "Success",
+                    Result = result
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<string>
+                {
+                    Code = 500,
+                    Status = "Error",
+                    Result = ex.Message
+                });
+            }
         }
 
-        // POST /api/user/{id}/claims
-        [HttpPost("{id}/claims")]
+
+        [HttpPost("claims/{id}")]
         public async Task<IActionResult> UpdateUserClaims(string id, [FromBody] List<string> claims)
         {
-            var user = await _userManager.FindByIdAsync(id);
-            if (user == null) return NotFound();
-
-            // تحقق من صلاحية الـ claims (مثلاً: ClaimsStore.AllClaims)
-            var validClaims = ClaimsStore.AllClaims.Select(c => c.Type).ToList();
-            if (claims.Except(validClaims).Any())
-                return BadRequest("Invalid claims specified");
-
-            var currentClaims = await _userManager.GetClaimsAsync(user);
-            foreach (var claim in currentClaims)
+            try
             {
-                var result = await _userManager.RemoveClaimAsync(user, claim);
-                if (!result.Succeeded)
-                    return BadRequest(result.Errors);
-            }
+                var success = await _userClaimManagementService.AssignClaimsToUserAsync(id, claims);
+                if (!success)
+                {
+                    return BadRequest(new ApiResponse<string>
+                    {
+                        Code = 400,
+                        Status = "Error",
+                        Result = "Failed to update claims."
+                    });
+                }
 
-            foreach (var claimType in claims)
+                var updatedClaims = await _userClaimManagementService.GetUserClaimsAsync(id);
+                return Ok(new ApiResponse<List<ClaimDTO>>
+                {
+                    Code = 200,
+                    Status = "Updated",
+                    Result = updatedClaims
+                });
+            }
+            catch (Exception ex)
             {
-                var result = await _userManager.AddClaimAsync(user, new Claim(claimType, "true"));
-                if (!result.Succeeded)
-                    return BadRequest(result.Errors);
+                return StatusCode(500, new ApiResponse<string>
+                {
+                    Code = 500,
+                    Status = "Error",
+                    Result = ex.Message
+                });
             }
-
-            // إرجاع الـ claims المحدثة
-            var updatedClaims = await _userManager.GetClaimsAsync(user);
-            var claimTypes = updatedClaims.Select(c => c.Type).ToList();
-
-            return Ok(claimTypes);
         }
+
 
         [HttpPost("create-by-admin")]
         public async Task<IActionResult> CreateUserByAdmin([FromBody] CreateUserByAdminDTO dto)
         {
             try
             {
-                // 1. التحقق من صحة البيانات
-                if (dto == null)
-                {
-                    return BadRequest(new ApiResponse<string>
-                    {
-                        Code = (int)HttpStatusCode.BadRequest,
-                        Status = "Error",
-                        Result = "Invalid data."
-                    });
-                }
-
-                if (!ModelState.IsValid)
+                if (dto == null || !ModelState.IsValid)
                 {
                     var errors = ModelState.Values
-                                           .SelectMany(v => v.Errors)
-                                           .Select(e => e.ErrorMessage)
-                                           .ToList();
+                        .SelectMany(v => v.Errors)
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
 
                     return BadRequest(new ApiResponse<object>
                     {
-                        Code = (int)HttpStatusCode.BadRequest,
+                        Code = 400,
                         Status = "Validation Error",
                         Result = errors
                     });
                 }
 
-                // 2. تنفيذ العملية
-                var result = await _customUserService.CreateUserByAdminAsync(dto);
+                var result = await _userManagementService.CreateUserByAdminAsync(dto);
 
-                // 3. إرجاع النتيجة بنجاح
                 return Ok(new ApiResponse<object>
                 {
-                    Code = (int)HttpStatusCode.OK,
+                    Code = 200,
                     Status = "Success",
                     Result = new
                     {
                         Message = "User created successfully.",
-                        UserId = result.UserId,
-                        EmailSent = result.EmailSent
+                        result.UserId,
+                        result.EmailSent
                     }
-                });
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                return StatusCode((int)HttpStatusCode.Forbidden, new ApiResponse<string>
-                {
-                    Code = (int)HttpStatusCode.Forbidden,
-                    Status = "Forbidden",
-                    Result = ex.Message
                 });
             }
             catch (Exception ex)
             {
-                return StatusCode((int)HttpStatusCode.InternalServerError, new ApiResponse<object>
+                return StatusCode(500, new ApiResponse<string>
                 {
-                    Code = (int)HttpStatusCode.InternalServerError,
+                    Code = 500,
                     Status = "Error",
                     Result = ex.Message
                 });
@@ -346,6 +422,5 @@ namespace Kindergarten.API.Controllers
         }
 
         #endregion
-
     }
 }

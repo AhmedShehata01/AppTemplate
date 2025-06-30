@@ -197,6 +197,12 @@ namespace Kindergarten.BLL.Services
             return _mapper.Map<List<RouteWithRolesDTO>>(routes);
         }
 
+        public async Task<bool> IsRoleAssignedToAnySecuredRouteAsync(string roleId)
+        {
+            return await _context.RoleSecuredRoutes
+                                 .AnyAsync(r => r.RoleId == roleId);
+        }
+
         #endregion
 
 
@@ -211,10 +217,10 @@ namespace Kindergarten.BLL.Services
         Task<int> CreateRouteAsync(CreateSecuredRouteDTO dto, string createdById);
         Task<bool> UpdateRouteAsync(UpdateSecuredRouteDTO dto);
         Task<bool> DeleteRouteAsync(int id);
-
         Task<bool> AssignRolesAsync(AssignRolesToRouteDTO dto);
         Task<bool> UnassignRoleAsync(UnassignRoleFromRouteDTO dto);
-
         Task<List<RouteWithRolesDTO>> GetRoutesWithRolesAsync();
+        Task<bool> IsRoleAssignedToAnySecuredRouteAsync(string roleId);
+
     }
 }

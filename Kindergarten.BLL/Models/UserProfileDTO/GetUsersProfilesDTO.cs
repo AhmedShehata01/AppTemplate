@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations.Schema;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Text;
@@ -8,10 +7,11 @@ using System.Threading.Tasks;
 using Kindergarten.DAL.Enum;
 using Kindergarten.DAL.Extend;
 
-namespace Kindergarten.BLL.Models.UsersManagementDTO
+namespace Kindergarten.BLL.Models.UserProfileDTO
 {
-    public class CompleteBasicProfileDTO : BaseEntityDTO
+    public class GetUsersProfilesDTO : BaseEntityDTO
     {
+        public string UserId { get; set; } // PK + FK
 
         [Required(ErrorMessage = "FullName is required.")]
         [MinLength(3, ErrorMessage = "FullName must be at least 3 characters.")]
@@ -50,6 +50,10 @@ namespace Kindergarten.BLL.Models.UsersManagementDTO
         public string? SubmitterIp { get; set; }
 
         public UserStatus Status { get; set; } = UserStatus.draft;
+        public string? StatusText => Status.ToString();
 
+        public string? ReviewedBy { get; set; } // UserId of the admin
+        public DateTime? ReviewedAt { get; set; } // When reviewed
+        public string? RejectionReason { get; set; } // Why rejected if rejected
     }
 }

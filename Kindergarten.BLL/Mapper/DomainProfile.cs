@@ -9,7 +9,8 @@ using Kindergarten.BLL.Models.BranchDTO;
 using Kindergarten.BLL.Models.DRBRADTO;
 using Kindergarten.BLL.Models.KindergartenDTO;
 using Kindergarten.BLL.Models.RoleManagementDTO;
-using Kindergarten.BLL.Models.UsersManagementDTO;
+using Kindergarten.BLL.Models.UserManagementDTO;
+using Kindergarten.BLL.Models.UserProfileDTO;
 using Kindergarten.DAL.Entity;
 using Kindergarten.DAL.Entity.DRBRA;
 using Kindergarten.DAL.Extend;
@@ -111,7 +112,7 @@ namespace Kindergarten.BLL.Mapper
             CreateMap<CreateRoleDTO, ApplicationRole>()
                 .ForMember(dest => dest.IsActive, opt => opt.MapFrom(src => true))
                 .ForMember(dest => dest.IsExternal, opt => opt.MapFrom(src => false))
-                .ForMember(dest => dest.CreatedOn, opt => opt.MapFrom(src => DateTime.Now.ToShortDateString()))
+                .ForMember(dest => dest.CreatedOn, opt => opt.MapFrom(src => DateTime.Now))
                 .ForMember(dest => dest.IsDeleted, opt => opt.MapFrom(src => false));
 
             // Update DTO → لا نربطه مباشرة لأنه هيتم التعديل يدوي في الخدمة
@@ -124,6 +125,34 @@ namespace Kindergarten.BLL.Mapper
                 .ForMember(dest => dest.AllowedRoutes, opt => opt.MapFrom(src =>
                     src.RoleSecuredRoutes.Select(rr => rr.SecuredRoute.BasePath).ToList()
                 ));
+
+            // Entity → DropdownRoleDTO
+            CreateMap<ApplicationRole, DropdownRoleDTO>()
+                .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id))
+                .ForMember(dest => dest.Name, opt => opt.MapFrom(src => src.Name));
+
+
+            #endregion
+
+            #region User Management Mappings
+
+            // Entity → DTO
+            CreateMap<ApplicationUser, ApplicationUserDTO>()
+                .ForMember(dest => dest.IsAgree, opt => opt.MapFrom(src => !src.LockoutEnabled));
+
+            // Create DTO → Entity
+            CreateMap<CreateApplicationUserDTO, ApplicationUser>()
+                .ForMember(dest => dest.UserName, opt => opt.MapFrom(src => src.Email))
+                .ForMember(dest => dest.EmailConfirmed, opt => opt.MapFrom(src => true))
+                .ForMember(dest => dest.IsDeleted, opt => opt.MapFrom(src => false))
+                .ForMember(dest => dest.IsAgree, opt => opt.MapFrom(src => true))
+                .ForMember(dest => dest.CreatedOn, opt => opt.MapFrom(src => DateTime.Now));
+
+            // Update DTO → Entity
+            CreateMap<UpdateApplicationUserDTO, ApplicationUser>()
+                .ForMember(dest => dest.UserName, opt => opt.MapFrom(src => src.UserName))
+                .ForMember(dest => dest.PhoneNumber, opt => opt.MapFrom(src => src.PhoneNumber))
+                .ForMember(dest => dest.LockoutEnabled, opt => opt.MapFrom(src => !src.IsAgree));
 
             #endregion
 
@@ -156,8 +185,6 @@ namespace Kindergarten.BLL.Mapper
                 .ForMember(dest => dest.PerformedAt, opt => opt.Ignore());
 
             #endregion
-
-
 
         }
     }

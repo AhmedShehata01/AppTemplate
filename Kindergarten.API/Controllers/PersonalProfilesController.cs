@@ -1,5 +1,5 @@
 ﻿using Kindergarten.BLL.Helper;
-using Kindergarten.BLL.Models.UsersManagementDTO;
+using Kindergarten.BLL.Models.UserProfileDTO;
 using System.Security.Claims;
 using Kindergarten.BLL.Services;
 using Kindergarten.DAL.Database;
@@ -18,7 +18,7 @@ namespace Kindergarten.API.Controllers
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly RoleManager<ApplicationRole> _roleManager;
         private readonly ApplicationContext db;
-        private readonly ICustomUsersService _customUserService;
+        private readonly IUserProfileService _iUserProfileService;
         #endregion
 
 
@@ -26,12 +26,12 @@ namespace Kindergarten.API.Controllers
         public PersonalProfilesController(UserManager<ApplicationUser> _userManager,
                                         RoleManager<ApplicationRole> _roleManager,
                                         ApplicationContext db,
-                                        ICustomUsersService customUserService)
+                                        IUserProfileService iUserProfileService)
         {
             this._userManager = _userManager;
             this._roleManager = _roleManager;
             this.db = db;
-            this._customUserService = customUserService;
+            _iUserProfileService = iUserProfileService;
         }
         #endregion
 
@@ -59,7 +59,7 @@ namespace Kindergarten.API.Controllers
             {
                 dto.CreatedBy = currentUserName;
 
-                var result = await _customUserService.CompleteBasicProfileAsync(userId, dto);
+                var result = await _iUserProfileService.CompleteBasicProfileAsync(userId, dto);
 
                 if (!result)
                 {
@@ -94,7 +94,7 @@ namespace Kindergarten.API.Controllers
         [HttpGet("profiles/pending")]
         public async Task<IActionResult> GetPendingProfiles([FromQuery] PaginationFilter filter)
         {
-            var result = await _customUserService.GetAllUsersProfilesForAdminAsync(filter);
+            var result = await _iUserProfileService.GetAllUsersProfilesForAdminAsync(filter);
             return Ok(new ApiResponse<PagedResult<GetUsersProfilesDTO>>
             {
                 Code = 200,
@@ -107,7 +107,7 @@ namespace Kindergarten.API.Controllers
         [HttpGet("profiles/{userId}")]
         public async Task<ActionResult<ApiResponse<GetUsersProfilesDTO>>> GetUserProfileByUserId(string userId)
         {
-            var profile = await _customUserService.GetUserProfileByUserIdAsync(userId);
+            var profile = await _iUserProfileService.GetUserProfileByUserIdAsync(userId);
 
             if (profile == null)
             {
@@ -139,7 +139,7 @@ namespace Kindergarten.API.Controllers
                 return Forbid();
 
             // ✅ جلب الحالة
-            var status = await _customUserService.GetUserStatusAsync(userId);
+            var status = await _iUserProfileService.GetUserStatusAsync(userId);
 
             // ✅ لم يتم العثور على ملف المستخدم
             if (status == null)
@@ -186,7 +186,7 @@ namespace Kindergarten.API.Controllers
                 }
 
                 // ✅ تنفيذ العملية
-                var result = await _customUserService.ReviewUserProfileByAdminAsync(dto, currentUserId);
+                var result = await _iUserProfileService.ReviewUserProfileByAdminAsync(dto, currentUserId);
 
                 // ✅ إرجاع النتيجة بناءً على نجاح العملية
                 if (result.Success)
