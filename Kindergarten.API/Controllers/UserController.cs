@@ -36,152 +36,82 @@ namespace Kindergarten.API.Controllers
         [HttpGet("GetAllPaginated")]
         public async Task<IActionResult> GetAllPaginated([FromQuery] PaginationFilter filter)
         {
-            try
+            var result = await _userManagementService.GetAllPaginatedAsync(filter);
+
+            return Ok(new ApiResponse<PagedResult<ApplicationUserDTO>>
             {
-                var result = await _userManagementService.GetAllPaginatedAsync(filter);
-                return Ok(new ApiResponse<PagedResult<ApplicationUserDTO>>
-                {
-                    Code = 200,
-                    Status = "Success",
-                    Result = result
-                });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<string>
-                {
-                    Code = 500,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = 200,
+                Status = "Success",
+                Result = result
+            });
         }
 
 
         [HttpGet("{id}")]
         public async Task<IActionResult> GetUserById(string id)
         {
-            try
+            if (!User.IsInRole("Admin") && !User.IsInRole("Super Admin") && CurrentUserId != id)
             {
-                var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-                if (!User.IsInRole("Admin") && !User.IsInRole("Super Admin") && currentUserId != id)
+                return StatusCode(StatusCodes.Status403Forbidden, new ApiResponse<string>
                 {
-                    return StatusCode((int)HttpStatusCode.Forbidden, new ApiResponse<string>
-                    {
-                        Code = 403,
-                        Status = "Forbidden",
-                        Result = "You are not authorized to view this user."
-                    });
-                }
-
-                var user = await _userManagementService.GetByIdAsync(id);
-                if (user == null)
-                {
-                    return NotFound(new ApiResponse<string>
-                    {
-                        Code = 404,
-                        Status = "NotFound",
-                        Result = "User not found."
-                    });
-                }
-
-                return Ok(new ApiResponse<ApplicationUserDTO>
-                {
-                    Code = 200,
-                    Status = "Success",
-                    Result = user
+                    Code = 403,
+                    Status = "Forbidden",
+                    Result = "You are not authorized to view this user."
                 });
             }
-            catch (Exception ex)
+
+            var user = await _userManagementService.GetByIdAsync(id);
+
+            return Ok(new ApiResponse<ApplicationUserDTO>
             {
-                return StatusCode(500, new ApiResponse<string>
-                {
-                    Code = 500,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = 200,
+                Status = "Success",
+                Result = user
+            });
         }
+
+
 
 
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateUser(string id, [FromBody] UpdateApplicationUserDTO updatedUser)
         {
-            try
+            if (id != updatedUser.Id)
             {
-                if (id != updatedUser.Id)
+                return BadRequest(new ApiResponse<string>
                 {
-                    return BadRequest(new ApiResponse<string>
-                    {
-                        Code = 400,
-                        Status = "Error",
-                        Result = "User ID mismatch"
-                    });
-                }
-
-                var success = await _userManagementService.UpdateAsync(id, updatedUser, CurrentUserId, CurrentUserName);
-                if (!success)
-                {
-                    return NotFound(new ApiResponse<string>
-                    {
-                        Code = 404,
-                        Status = "NotFound",
-                        Result = "User not found."
-                    });
-                }
-
-                return Ok(new ApiResponse<bool>
-                {
-                    Code = 200,
-                    Status = "Updated",
-                    Result = true
-                });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<string>
-                {
-                    Code = 500,
+                    Code = 400,
                     Status = "Error",
-                    Result = ex.Message
+                    Result = "User ID mismatch"
                 });
             }
+
+            await _userManagementService.UpdateAsync(id, updatedUser, CurrentUserId, CurrentUserName);
+
+            return Ok(new ApiResponse<bool>
+            {
+                Code = 200,
+                Status = "Updated",
+                Result = true
+            });
         }
+
 
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteUser(string id)
         {
-            try
-            {
-                var success = await _userManagementService.DeleteAsync(id, CurrentUserId, CurrentUserName);
-                if (!success)
-                {
-                    return NotFound(new ApiResponse<string>
-                    {
-                        Code = 404,
-                        Status = "NotFound",
-                        Result = "User not found."
-                    });
-                }
+            await _userManagementService.DeleteAsync(id, CurrentUserId, CurrentUserName);
 
-                return Ok(new ApiResponse<string>
-                {
-                    Code = 200,
-                    Status = "Deleted",
-                    Result = $"User with id '{id}' deleted successfully."
-                });
-            }
-            catch (Exception ex)
+            return Ok(new ApiResponse<string>
             {
-                return StatusCode(500, new ApiResponse<string>
-                {
-                    Code = 500,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = 200,
+                Status = "Deleted",
+                Result = $"User with id '{id}' deleted successfully."
+            });
         }
+
+
 
 
         [HttpGet("allroles")]

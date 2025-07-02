@@ -39,7 +39,6 @@ namespace Kindergarten.BLL.Services
         #region Actions
         public async Task<PagedResult<KindergartenDTO>> GetAllKgsAsync(PaginationFilter filter)
         {
-
             var searchText = filter.SearchText?.Trim(); // ✅ نستخدم نسخة معالجة
 
             Expression<Func<KG, bool>> where = k =>
@@ -93,18 +92,23 @@ namespace Kindergarten.BLL.Services
                 .Include(k => k.Branches)
                 .FirstOrDefaultAsync(k => k.Id == id);
 
+            if (kg == null)
+                throw new KeyNotFoundException($"Kindergarten with ID {id} was not found.");
+
             return _mapper.Map<KindergartenDTO>(kg);
         }
 
+
         public async Task<KindergartenDTO> CreateKgAsync(KindergartenCreateDTO dto, string userId, string userName)
         {
+            if (dto.Branches == null || !dto.Branches.Any())
+                throw new InvalidOperationException("A kindergarten must have at least one branch.");
+
             var kg = _mapper.Map<KG>(dto);
             kg.KGCode = await GenerateKgCodeAsync();
             kg.CreatedBy = userId;
             kg.Branches = new List<Branch>();
 
-            if (dto.Branches == null || !dto.Branches.Any())
-                throw new InvalidOperationException("A kindergarten must have at least one branch.");
 
             var lastCode = await _db.Branches
                 .OrderByDescending(b => b.BranchCode)
@@ -145,36 +149,29 @@ namespace Kindergarten.BLL.Services
                 kg.Branches.Add(branch);
             }
 
-            try
+            var result = await _kgRepository.AddAsync(kg);
+
+            // ✨ Logging بعد حفظ الكيان ووجود Id حقيقي
+            var newKgDto = _mapper.Map<KindergartenDTO>(result);
+            var newData = System.Text.Json.JsonSerializer.Serialize(newKgDto);
+
+            var entityType = _db.Model.FindEntityType(typeof(KG));
+            var tableName = entityType?.GetTableName() ?? nameof(KG);
+
+            var logDto = new ActivityLogCreateDTO
             {
-                var result = await _kgRepository.AddAsync(kg);
+                EntityName = tableName,
+                EntityId = result.Id.ToString(),
+                ActionType = ActivityActionType.Created,
+                NewValues = newData,
+                PerformedByUserId = userId,
+                PerformedByUserName = userName,
+                SystemComment = "إضافة حضانة جديدة مع الفروع"
+            };
 
-                // ✨ Logging بعد حفظ الكيان ووجود Id حقيقي
-                var newKgDto = _mapper.Map<KindergartenDTO>(result);
-                var newData = System.Text.Json.JsonSerializer.Serialize(newKgDto);
+            await _activityLogService.CreateAsync(logDto);
 
-                var entityType = _db.Model.FindEntityType(typeof(KG));
-                var tableName = entityType?.GetTableName() ?? nameof(KG);
-
-                var logDto = new ActivityLogCreateDTO
-                {
-                    EntityName = tableName,
-                    EntityId = result.Id.ToString(),
-                    ActionType = ActivityActionType.Created,
-                    NewValues = newData,
-                    PerformedByUserId = userId,
-                    PerformedByUserName = userName,
-                    SystemComment = "إضافة حضانة جديدة مع الفروع"
-                };
-
-                await _activityLogService.CreateAsync(logDto);
-
-                return _mapper.Map<KindergartenDTO>(result);
-            }
-            catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("IX_Branches_BranchCode") == true)
-            {
-                throw new Exception("An error occurred: A branch code already exists. Please try again.");
-            }
+            return _mapper.Map<KindergartenDTO>(result);
         }
 
 
@@ -186,7 +183,8 @@ namespace Kindergarten.BLL.Services
                 .FirstOrDefaultAsync(k => k.Id == dto.Id);
 
             if (existingKg == null)
-                return null;
+                throw new KeyNotFoundException($"Kindergarten with ID {dto.Id} was not found.");
+
 
             // ⬅️ لقطة من البيانات القديمة قبل التعديل
             var oldKgDto = _mapper.Map<KindergartenDTO>(existingKg);
@@ -311,7 +309,7 @@ namespace Kindergarten.BLL.Services
                 .FirstOrDefaultAsync(k => k.Id == id);
 
             if (kg == null)
-                return false;
+                throw new KeyNotFoundException($"Kindergarten with ID {id} was not found.");
 
             // ✨ نسجل Old Values
             var oldKgDto = _mapper.Map<KindergartenDTO>(kg);
@@ -350,7 +348,7 @@ namespace Kindergarten.BLL.Services
                 .FirstOrDefaultAsync(k => k.Id == id);
 
             if (kg == null)
-                return false;
+                throw new KeyNotFoundException($"Kindergarten with ID {id} was not found.");
 
             // ✨ نجهز Old Values قبل التعديل
             var oldKgDto = _mapper.Map<KindergartenFullDTO>(kg);
@@ -398,6 +396,10 @@ namespace Kindergarten.BLL.Services
 
         public async Task<List<ActivityLogViewDTO>> GetKgHistoryByKgIdAsync(int kgId)
         {
+            var kgExists = await _db.Kindergartens.AnyAsync(k => k.Id == kgId);
+            if (!kgExists)
+                throw new KeyNotFoundException($"Kindergarten with ID {kgId} was not found.");
+
             var entityType = _db.Model.FindEntityType(typeof(KG));
             var tableName = entityType?.GetTableName() ?? nameof(KG);
 

@@ -1,4 +1,5 @@
-﻿using AutoMapper;
+﻿using System.Text.Json;
+using AutoMapper;
 using Kindergarten.BLL.Models;
 using Kindergarten.BLL.Models.ActivityLogDTO;
 using Kindergarten.BLL.Models.DRBRADTO;
@@ -98,21 +99,31 @@ namespace Kindergarten.BLL.Services
         }
 
 
-        public async Task<SidebarItemDTO?> GetByIdAsync(int id)
+        public async Task<SidebarItemDTO> GetByIdAsync(int id)
         {
             var item = await _db.SidebarItem
                 .Include(x => x.Children.Where(c => !c.IsDeleted))
                 .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
 
-            return item == null ? null : _mapper.Map<SidebarItemDTO>(item);
+            if (item == null)
+                throw new KeyNotFoundException($"عنصر القائمة الجانبية بالمعرّف {id} غير موجود.");
+
+            return _mapper.Map<SidebarItemDTO>(item);
         }
+
 
         public async Task<int> CreateAsync(CreateSidebarItemDTO dto, string? performedByUserId, string? performedByUserName)
         {
+            // 1. التحقق من صحة الـ DTO
+            if (dto == null)
+                throw new ArgumentNullException(nameof(dto), "بيانات إنشاء عنصر القائمة الجانبية غير صحيحة.");
+
+            // 2. تحويل الـ DTO إلى كيان وحفظه
             var entity = _mapper.Map<SidebarItem>(dto);
             await _db.SidebarItem.AddAsync(entity);
             await _db.SaveChangesAsync();
 
+            // 3. تسجيل الـ ActivityLog
             await _activityLogService.CreateAsync(new ActivityLogCreateDTO
             {
                 EntityName = "SidebarItem",
@@ -122,31 +133,36 @@ namespace Kindergarten.BLL.Services
                 PerformedByUserId = performedByUserId,
                 PerformedByUserName = performedByUserName,
                 OldValues = null,
-                NewValues = System.Text.Json.JsonSerializer.Serialize(entity)
+                NewValues = JsonSerializer.Serialize(entity)
             });
 
             return entity.Id;
         }
 
 
+
         public async Task<bool> UpdateAsync(UpdateSidebarItemDTO dto, string? performedByUserId, string? performedByUserName)
         {
+            // 1. تحقق من صحة الـ DTO
+            if (dto == null)
+                throw new ArgumentNullException(nameof(dto), "بيانات التحديث غير صحيحة.");
+
+            // 2. جلب العنصر
             var item = await _db.SidebarItem.FindAsync(dto.Id);
             if (item == null || item.IsDeleted)
-                return false;
+                throw new KeyNotFoundException($"عنصر القائمة الجانبية بالمعرّف {dto.Id} غير موجود.");
 
-            // حفظ القيم القديمة قبل التحديث
-            var oldValuesJson = System.Text.Json.JsonSerializer.Serialize(item);
+            // 3. حفظ القيم القديمة للتوثيق
+            var oldValuesJson = JsonSerializer.Serialize(item);
 
-            // تحديث البيانات
+            // 4. تطبيق التحديثات
             _mapper.Map(dto, item);
-
             await _db.SaveChangesAsync();
 
-            // حفظ القيم الجديدة بعد التحديث
-            var newValuesJson = System.Text.Json.JsonSerializer.Serialize(item);
+            // 5. حفظ القيم الجديدة للتوثيق
+            var newValuesJson = JsonSerializer.Serialize(item);
 
-            // إنشاء سجل النشاط
+            // 6. تسجيل النشاط
             await _activityLogService.CreateAsync(new ActivityLogCreateDTO
             {
                 EntityName = "SidebarItem",
@@ -163,17 +179,20 @@ namespace Kindergarten.BLL.Services
         }
 
 
+
         public async Task<bool> SoftDeleteAsync(int id, string? performedByUserId, string? performedByUserName)
         {
+            // 1. جلب العنصر مع الأطفال
             var item = await _db.SidebarItem
                 .Include(x => x.Children)
                 .FirstOrDefaultAsync(x => x.Id == id);
 
+            // 2. إذا العنصر غير موجود أو محذوف مسبقًا → استثناء
             if (item == null || item.IsDeleted)
-                return false;
+                throw new KeyNotFoundException($"عنصر القائمة الجانبية بالمعرّف {id} غير موجود أو محذوف بالفعل.");
 
-            // حفظ بيانات العنصر والأطفال قبل الحذف (يمكنك تخصيص ما تريد حفظه)
-            var oldValuesJson = System.Text.Json.JsonSerializer.Serialize(new
+            // 3. حفظ القيم القديمة للتوثيق
+            var oldValuesJson = JsonSerializer.Serialize(new
             {
                 item.Id,
                 item.LabelAr,
@@ -181,16 +200,15 @@ namespace Kindergarten.BLL.Services
                 Children = item.Children.Select(c => new { c.Id, c.LabelAr, c.IsDeleted })
             });
 
-            // تعيين IsDeleted للعنصر والأطفال
+            // 4. تطبيق الحذف الناعم على العنصر والأطفال
             item.IsDeleted = true;
             foreach (var child in item.Children)
             {
                 child.IsDeleted = true;
             }
-
             await _db.SaveChangesAsync();
 
-            // تسجيل الـ Activity Log بعد الحذف
+            // 5. تسجيل الـ Activity Log
             await _activityLogService.CreateAsync(new ActivityLogCreateDTO
             {
                 EntityName = "SidebarItem",
@@ -205,6 +223,7 @@ namespace Kindergarten.BLL.Services
 
             return true;
         }
+
 
 
         public async Task<List<SidebarItemDTO>> GetParentItemsAsync()

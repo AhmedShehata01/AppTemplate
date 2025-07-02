@@ -32,19 +32,25 @@ namespace Kindergarten.BLL.Services.IdentityServices
 
             return Task.FromResult(allClaims);
         }
+
         public async Task<List<ClaimDTO>> GetUserClaimsAsync(string userId)
         {
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null)
-                throw new Exception("User not found.");
+                throw new KeyNotFoundException("User not found.");
 
             var claims = await _userManager.GetClaimsAsync(user);
             return claims.Select(c => new ClaimDTO { Type = c.Type, Value = c.Value }).ToList();
         }
-        public async Task<bool> AssignClaimsToUserAsync(string userId, List<string> claimTypes, string? performedByUserId, string? performedByUserName)
+
+        public async Task<bool> AssignClaimsToUserAsync(
+            string userId,
+            List<string> claimTypes,
+            string? performedByUserId,
+            string? performedByUserName)
         {
             var user = await _userManager.FindByIdAsync(userId)
-                ?? throw new Exception("User not found.");
+                ?? throw new KeyNotFoundException("User not found.");
 
             var existingClaims = await _userManager.GetClaimsAsync(user);
 
@@ -61,25 +67,22 @@ namespace Kindergarten.BLL.Services.IdentityServices
                 .Where(ec => !desiredClaims.Any(dc => dc.Type == ec.Type && dc.Value == ec.Value))
                 .ToList();
 
-            // أولًا: نفذ الحذف والإضافة
             if (claimsToRemove.Any())
             {
                 var removeResult = await _userManager.RemoveClaimsAsync(user, claimsToRemove);
                 if (!removeResult.Succeeded)
-                    throw new Exception($"Failed to remove claims for user {user.UserName}.");
+                    throw new InvalidOperationException($"Failed to remove claims for user {user.UserName}.");
             }
 
             if (claimsToAdd.Any())
             {
                 var addResult = await _userManager.AddClaimsAsync(user, claimsToAdd);
                 if (!addResult.Succeeded)
-                    throw new Exception($"Failed to add claims for user {user.UserName}.");
+                    throw new InvalidOperationException($"Failed to add claims for user {user.UserName}.");
             }
 
-            // بعد التعديل نجيب الـ Claims الجديدة من الداتا ستور (لو حابب تكون دقيقة)
             var updatedClaims = await _userManager.GetClaimsAsync(user);
 
-            // سجل الـ ActivityLog مرة واحدة مع OldValues و NewValues
             await _activityLogService.CreateAsync(new ActivityLogCreateDTO
             {
                 EntityName = "UserClaims",
@@ -95,11 +98,9 @@ namespace Kindergarten.BLL.Services.IdentityServices
             return true;
         }
 
-
-
-
         #endregion
     }
+
 
     public interface IUserClaimManagementService
     {

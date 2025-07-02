@@ -26,86 +26,46 @@ namespace Kindergarten.API.Controllers
         [HttpGet("getAllPaginated")]
         public async Task<IActionResult> GetAllPaginated([FromQuery] PaginationFilter filter)
         {
-            try
+            var result = await _roleService.GetAllPaginatedAsync(filter);
+
+            return Ok(new ApiResponse<PagedResult<ApplicationRoleDTO>>
             {
-                var result = await _roleService.GetAllPaginatedAsync(filter);
-                return Ok(new ApiResponse<PagedResult<ApplicationRoleDTO>>
-                {
-                    Code = 200,
-                    Status = "Success",
-                    Result = result
-                });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<string>
-                {
-                    Code = 500,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = 200,
+                Status = "Success",
+                Result = result
+            });
         }
+
 
 
         [HttpGet("getById/{id}")]
         public async Task<IActionResult> GetById(string id)
         {
-            try
-            {
-                var role = await _roleService.GetByIdAsync(id);
-                if (role == null)
-                {
-                    return NotFound(new ApiResponse<string>
-                    {
-                        Code = 404,
-                        Status = "Not Found",
-                        Result = "Role not found."
-                    });
-                }
+            var role = await _roleService.GetByIdAsync(id);
 
-                return Ok(new ApiResponse<ApplicationRoleDTO>
-                {
-                    Code = 200,
-                    Status = "Success",
-                    Result = role
-                });
-            }
-            catch (Exception ex)
+            return Ok(new ApiResponse<ApplicationRoleDTO>
             {
-                return StatusCode(500, new ApiResponse<string>
-                {
-                    Code = 500,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = 200,
+                Status = "Success",
+                Result = role
+            });
         }
+
 
 
         [HttpPost("create")]
         public async Task<IActionResult> Create(CreateRoleDTO dto)
         {
-            try
+            var roleId = await _roleService.CreateRoleAsync(dto, CurrentUserId, CurrentUserName);
+
+            return Ok(new ApiResponse<string>
             {
-                var created = await _roleService.CreateRoleAsync(dto, CurrentUserId, CurrentUserName);
-                return Ok(new ApiResponse<bool>
-                {
-                    Code = 200,
-                    Status = "Success",
-                    Result = created
-                });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<string>
-                {
-                    Code = 500,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = 200,
+                Status = "Created",
+                Result = roleId
+            });
         }
+
 
 
         [HttpPut("update/{id}")]
@@ -121,105 +81,44 @@ namespace Kindergarten.API.Controllers
                 });
             }
 
-            try
-            {
-                var updated = await _roleService.UpdateRoleAsync(dto, CurrentUserId, CurrentUserName);
-                if (!updated)
-                {
-                    return NotFound(new ApiResponse<string>
-                    {
-                        Code = 404,
-                        Status = "Not Found",
-                        Result = "Role not found."
-                    });
-                }
+            await _roleService.UpdateRoleAsync(dto, CurrentUserId, CurrentUserName);
 
-                return Ok(new ApiResponse<bool>
-                {
-                    Code = 200,
-                    Status = "Success",
-                    Result = true
-                });
-            }
-            catch (Exception ex)
+            return Ok(new ApiResponse<bool>
             {
-                return StatusCode(500, new ApiResponse<string>
-                {
-                    Code = 500,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = 200,
+                Status = "Updated",
+                Result = true
+            });
         }
+
 
 
         [HttpPut("toggle-status/{id}")]
         public async Task<IActionResult> ToggleStatus(string id)
         {
-            try
-            {
-                var toggled = await _roleService.ToggleRoleStatusAsync(id, CurrentUserId, CurrentUserName);
-                if (!toggled)
-                {
-                    return NotFound(new ApiResponse<string>
-                    {
-                        Code = 404,
-                        Status = "Not Found",
-                        Result = "Role not found or deleted."
-                    });
-                }
+            await _roleService.ToggleRoleStatusAsync(id, CurrentUserId, CurrentUserName);
 
-                return Ok(new ApiResponse<bool>
-                {
-                    Code = 200,
-                    Status = "Success",
-                    Result = true
-                });
-            }
-            catch (Exception ex)
+            return Ok(new ApiResponse<bool>
             {
-                return StatusCode(500, new ApiResponse<string>
-                {
-                    Code = 500,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = 200,
+                Status = "Toggled",
+                Result = true
+            });
         }
+
 
 
         [HttpDelete("delete/{id}")]
         public async Task<IActionResult> Delete(string id)
         {
-            try
-            {
-                var deleted = await _roleService.DeleteRoleAsync(id, CurrentUserId, CurrentUserName);
-                if (!deleted)
-                {
-                    return NotFound(new ApiResponse<string>
-                    {
-                        Code = 404,
-                        Status = "Not Found",
-                        Result = "Role not found."
-                    });
-                }
+            await _roleService.DeleteRoleAsync(id, CurrentUserId, CurrentUserName);
 
-                return Ok(new ApiResponse<bool>
-                {
-                    Code = 200,
-                    Status = "Success",
-                    Result = true
-                });
-            }
-            catch (Exception ex)
+            return Ok(new ApiResponse<bool>
             {
-                return StatusCode(500, new ApiResponse<string>
-                {
-                    Code = 500,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = 200,
+                Status = "Success",
+                Result = true
+            });
         }
 
 
@@ -227,50 +126,27 @@ namespace Kindergarten.API.Controllers
         [HttpGet("roles-with-routes")]
         public async Task<IActionResult> GetRolesWithRoutes()
         {
-            try
+            var roles = await _roleService.GetRolesWithRoutesAsync();
+            return Ok(new ApiResponse<List<RoleWithRoutesDTO>>
             {
-                var roles = await _roleService.GetRolesWithRoutesAsync();
-                return Ok(new ApiResponse<List<RoleWithRoutesDTO>>
-                {
-                    Code = 200,
-                    Status = "Success",
-                    Result = roles
-                });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<string>
-                {
-                    Code = 500,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = 200,
+                Status = "Success",
+                Result = roles
+            });
+
         }
 
 
         [HttpGet("roles-dropdown")]
         public async Task<IActionResult> GetDropdownRoles()
         {
-            try
+            var roles = await _roleService.GetDropdownRolesAsync();
+            return Ok(new ApiResponse<List<DropdownRoleDTO>>
             {
-                var roles = await _roleService.GetDropdownRolesAsync();
-                return Ok(new ApiResponse<List<DropdownRoleDTO>>
-                {
-                    Code = 200,
-                    Status = "Success",
-                    Result = roles
-                });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<string>
-                {
-                    Code = 500,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = 200,
+                Status = "Success",
+                Result = roles
+            });
         }
 
         /// <summary>
@@ -279,25 +155,14 @@ namespace Kindergarten.API.Controllers
         [HttpGet("{roleId}/users")]
         public async Task<IActionResult> GetUsersByRole(string roleId)
         {
-            try
+            var users = await _roleService.GetUsersByRoleAsync(roleId);
+            return Ok(new ApiResponse<List<ApplicationUserDTO>>
             {
-                var users = await _roleService.GetUsersByRoleAsync(roleId);
-                return Ok(new ApiResponse<List<ApplicationUserDTO>>
-                {
-                    Code = 200,
-                    Status = "Success",
-                    Result = users
-                });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<string>
-                {
-                    Code = 500,
-                    Status = "Error",
-                    Result = "An error occurred while retrieving users."
-                });
-            }
+                Code = 200,
+                Status = "Success",
+                Result = users
+            });
+
         }
 
         /// <summary>
@@ -306,35 +171,13 @@ namespace Kindergarten.API.Controllers
         [HttpDelete("{roleId}/users/{userId}")]
         public async Task<IActionResult> RemoveUserFromRole(string roleId, string userId)
         {
-            try
+            await _roleService.RemoveUserRoleAsync(userId, roleId, CurrentUserId, CurrentUserName);
+            return Ok(new ApiResponse<bool>
             {
-                var removed = await _roleService.RemoveUserRoleAsync(userId, roleId, CurrentUserId, CurrentUserName);
-                if (!removed)
-                {
-                    return NotFound(new ApiResponse<string>
-                    {
-                        Code = 404,
-                        Status = "Not Found",
-                        Result = "User or role assignment not found."
-                    });
-                }
-
-                return Ok(new ApiResponse<bool>
-                {
-                    Code = 200,
-                    Status = "Success",
-                    Result = true
-                });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<string>
-                {
-                    Code = 500,
-                    Status = "Error",
-                    Result = $"An error occurred while removing user from role , {ex}."
-                });
-            }
+                Code = 200,
+                Status = "Success",
+                Result = true
+            });
         }
         #endregion
     }

@@ -56,11 +56,17 @@ namespace Kindergarten.BLL.Services
             };
         }
 
-        public async Task<BranchDTO?> GetBranchByIdAsync(int id)
+        public async Task<BranchDTO> GetBranchByIdAsync(int id)
         {
             var branch = await _branchRepository.GetByIdAsync(id);
-            return branch == null ? null : _mapper.Map<BranchDTO>(branch);
+
+            if (branch == null)
+                throw new KeyNotFoundException($"Branch with ID {id} not found.");
+
+            return _mapper.Map<BranchDTO>(branch);
         }
+
+
 
         public async Task<BranchDTO> CreateBranchAsync(BranchCreateDTO dto, string createdBy)
         {
@@ -76,11 +82,11 @@ namespace Kindergarten.BLL.Services
             return _mapper.Map<BranchDTO>(result);
         }
 
-        public async Task<BranchDTO?> UpdateBranchAsync(BranchUpdateDTO dto, string updatedBy)
+        public async Task<BranchDTO> UpdateBranchAsync(BranchUpdateDTO dto, string updatedBy)
         {
             var existingBranch = await _db.Branches.FirstOrDefaultAsync(b => b.Id == dto.Id);
             if (existingBranch == null)
-                return null;
+                throw new KeyNotFoundException($"Branch with ID {dto.Id} not found.");
 
             _mapper.Map(dto, existingBranch);
             existingBranch.UpdatedBy = updatedBy;
@@ -93,20 +99,24 @@ namespace Kindergarten.BLL.Services
         public async Task<bool> DeleteBranchAsync(int id)
         {
             var branch = await _branchRepository.GetByIdAsync(id);
-            if (branch == null) return false;
+            if (branch == null)
+                throw new KeyNotFoundException($"Branch with ID {id} not found.");
 
             await _branchRepository.DeleteAsync(id);
             return true;
         }
 
+
         public async Task<bool> SoftDeleteBranchAsync(int id)
         {
             var branch = await _branchRepository.GetByIdAsync(id);
-            if (branch == null) return false;
+            if (branch == null)
+                throw new KeyNotFoundException($"Branch with ID {id} not found.");
 
             await _branchRepository.SoftDeleteAsync(id);
             return true;
         }
+
 
         public async Task<List<BranchDTO>> GetBranchesByKindergartenIdAsync(int kindergartenId)
         {
@@ -162,9 +172,9 @@ namespace Kindergarten.BLL.Services
     public interface IBranchService
     {
         Task<PagedResult<BranchDTO>> GetAllBranchesAsync(PaginationFilter filter);
-        Task<BranchDTO?> GetBranchByIdAsync(int id);
+        Task<BranchDTO> GetBranchByIdAsync(int id);
         Task<BranchDTO> CreateBranchAsync(BranchCreateDTO dto, string createdBy);
-        Task<BranchDTO?> UpdateBranchAsync(BranchUpdateDTO dto, string createdBy);
+        Task<BranchDTO> UpdateBranchAsync(BranchUpdateDTO dto, string createdBy);
         Task<bool> DeleteBranchAsync(int id);
         Task<bool> SoftDeleteBranchAsync(int id);
         Task<string> GenerateBranchCodeAsync();

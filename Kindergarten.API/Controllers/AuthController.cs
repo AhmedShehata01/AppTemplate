@@ -47,23 +47,13 @@ namespace Kindergarten.API.Controllers
                 });
             }
 
-            var result = await _authService.RegisterAsync(model);
-
-            if (result.Code != 200)
-            {
-                return BadRequest(new ApiResponse<string>
-                {
-                    Code = result.Code,
-                    Status = "RegisterFailed",
-                    Result = result.Result
-                });
-            }
+            var message = await _authService.RegisterAsync(model); // ❗ ده هيرمي لو حصلت مشكلة
 
             return Ok(new ApiResponse<string>
             {
                 Code = 200,
                 Status = "Success",
-                Result = result.Result
+                Result = message
             });
         }
 
@@ -80,23 +70,13 @@ namespace Kindergarten.API.Controllers
                 });
             }
 
-            var result = await _authService.LoginAsync(model);
-
-            if (result.Code != 200)
-            {
-                return Unauthorized(new ApiResponse<string>
-                {
-                    Code = 401,
-                    Status = "Unauthorized",
-                    Result = result.Result
-                });
-            }
+            var token = await _authService.LoginAsync(model);
 
             return Ok(new ApiResponse<string>
             {
                 Code = 200,
                 Status = "Success",
-                Result = result.Result
+                Result = token
             });
         }
 
@@ -117,8 +97,14 @@ namespace Kindergarten.API.Controllers
                 });
             }
 
-            var result = await _authService.ForgotPasswordAsync(model);
-            return StatusCode(result.Code, result);
+            var message = await _authService.ForgotPasswordAsync(model);
+
+            return Ok(new ApiResponse<string>
+            {
+                Code = 200,
+                Status = "Success",
+                Result = message
+            });
         }
 
 
@@ -137,22 +123,28 @@ namespace Kindergarten.API.Controllers
             }
 
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            var result = await _authService.ChangePasswordAsync(userId, model);
+            var message = await _authService.ChangePasswordAsync(userId, model);
 
-            return StatusCode(result.Code, result);
+            return Ok(new ApiResponse<string>
+            {
+                Code = 200,
+                Status = "Success",
+                Result = message
+            });
         }
+
 
         [Authorize]
         [HttpPost("change-password-first-time")]
         public async Task<IActionResult> ChangePasswordFirstTime([FromBody] ChangePasswordFirstTimeDto model)
         {
-            if (model.NewPassword != model.ConfirmPassword)
+            if (!ModelState.IsValid)
             {
-                return BadRequest(new ApiResponse<string>
+                return BadRequest(new ApiResponse<object>
                 {
                     Code = 400,
-                    Status = "PasswordMismatch",
-                    Result = "كلمة المرور الجديدة غير متطابقة."
+                    Status = "InvalidModel",
+                    Result = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList()
                 });
             }
 
@@ -167,54 +159,7 @@ namespace Kindergarten.API.Controllers
                 });
             }
 
-            var user = await _userManager.FindByIdAsync(userId);
-            if (user == null)
-            {
-                return Unauthorized(new ApiResponse<string>
-                {
-                    Code = 401,
-                    Status = "NotFound",
-                    Result = "المستخدم غير موجود."
-                });
-            }
-
-            var isOldPasswordCorrect = await _userManager.CheckPasswordAsync(user, model.OldPassword);
-            if (!isOldPasswordCorrect)
-            {
-                return BadRequest(new ApiResponse<string>
-                {
-                    Code = 400,
-                    Status = "IncorrectPassword",
-                    Result = "كلمة المرور الحالية غير صحيحة."
-                });
-            }
-
-            if (model.OldPassword == model.NewPassword)
-            {
-                return BadRequest(new ApiResponse<string>
-                {
-                    Code = 400,
-                    Status = "SamePassword",
-                    Result = "لا يمكن استخدام نفس كلمة المرور القديمة."
-                });
-            }
-
-            var result = await _userManager.ChangePasswordAsync(user, model.OldPassword, model.NewPassword);
-            if (!result.Succeeded)
-            {
-                return BadRequest(new ApiResponse<object>
-                {
-                    Code = 400,
-                    Status = "ChangePasswordFailed",
-                    Result = result.Errors.Select(e => e.Description).ToList()
-                });
-            }
-
-            user.IsFirstLogin = false;
-            await _userManager.UpdateAsync(user);
-
-            var roles = await _userManager.GetRolesAsync(user) ?? new List<string>();
-            var token = await _authService.GenerateJwtTokenAsync(user, roles);
+            var token = await _authService.ChangePasswordFirstTimeAsync(userId, model);
 
             return Ok(new ApiResponse<string>
             {
@@ -223,6 +168,7 @@ namespace Kindergarten.API.Controllers
                 Result = token
             });
         }
+
 
         #endregion
 

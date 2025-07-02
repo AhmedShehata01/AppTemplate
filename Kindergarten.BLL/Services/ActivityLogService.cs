@@ -22,8 +22,12 @@ namespace Kindergarten.BLL.Services
         #endregion
 
         #region Methods
+
         public async Task<int> CreateAsync(ActivityLogCreateDTO dto)
         {
+            if (dto == null)
+                throw new ArgumentNullException(nameof(dto), "Activity log data cannot be null.");
+
             var entity = _mapper.Map<ActivityLog>(dto);
             entity.PerformedAt = DateTime.UtcNow;
 
@@ -35,6 +39,12 @@ namespace Kindergarten.BLL.Services
 
         public async Task<List<ActivityLogViewDTO>> GetEntityHistoryAsync(string entityName, string entityId)
         {
+            if (string.IsNullOrWhiteSpace(entityName))
+                throw new ArgumentException("Entity name cannot be empty.", nameof(entityName));
+
+            if (string.IsNullOrWhiteSpace(entityId))
+                throw new ArgumentException("Entity ID cannot be empty.", nameof(entityId));
+
             var logs = await _context.ActivityLogs
                 .Where(x => x.EntityName == entityName && x.EntityId == entityId)
                 .OrderByDescending(x => x.PerformedAt)
@@ -45,6 +55,9 @@ namespace Kindergarten.BLL.Services
 
         public async Task<List<ActivityLogDTO>> GetUserActionsAsync(string userId, DateTime? fromDate = null, DateTime? toDate = null)
         {
+            if (string.IsNullOrWhiteSpace(userId))
+                throw new ArgumentException("User ID cannot be empty.", nameof(userId));
+
             var query = _context.ActivityLogs
                 .Where(x => x.PerformedByUserId == userId);
 
@@ -60,9 +73,10 @@ namespace Kindergarten.BLL.Services
 
             return _mapper.Map<List<ActivityLogDTO>>(logs);
         }
-        #endregion
 
+        #endregion
     }
+
 
     public interface IActivityLogService
     {

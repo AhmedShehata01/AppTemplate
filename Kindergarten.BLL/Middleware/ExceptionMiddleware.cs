@@ -1,74 +1,91 @@
 ﻿using System.Net;
 using System.Text.Json;
+using Kindergarten.BLL.Helper;
 using Microsoft.AspNetCore.Http;
-using NLog;
+using Microsoft.Extensions.Logging;
 
-namespace Kindergarten.BLL.Middleware
+
+namespace Kindergarten.BLL.Middleware;
+public class ExceptionMiddleware
 {
-    public class ExceptionMiddleware
+    private readonly RequestDelegate _next;
+    private readonly ILogger<ExceptionMiddleware> _logger;
+
+    public ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddleware> logger)
     {
-        #region Prop
-        private readonly RequestDelegate _next;
-        private static readonly Logger _logger = LogManager.GetCurrentClassLogger();
-        #endregion
+        _next = next;
+        _logger = logger;
+    }
 
-
-        #region CTOR
-        public ExceptionMiddleware(RequestDelegate next)
+    public async Task InvokeAsync(HttpContext context)
+    {
+        try
         {
-            _next = next;
+            await _next(context);
         }
-        #endregion
-
-        #region Actions
-        public async Task InvokeAsync(HttpContext context)
+        catch (Exception ex)
         {
-            try
+            await HandleExceptionAsync(context, ex);
+        }
+    }
+
+    private async Task HandleExceptionAsync(HttpContext context, Exception ex)
+    {
+        var errorId = Guid.NewGuid().ToString();
+
+        _logger.LogError(ex, "Unhandled Exception. ErrorId: {ErrorId}, Path: {Path}, Query: {Query}, User: {User}",
+            errorId,
+            context.Request.Path,
+            context.Request.QueryString,
+            context.User?.Identity?.Name ?? "Anonymous"
+        );
+
+
+
+        int statusCode = (int)HttpStatusCode.InternalServerError;
+        string message = "حدث خطأ غير متوقع. برجاء المحاولة لاحقاً.";
+
+        // تقدر هنا تمسك أنواع Exceptions معينة لو حابب ترجع StatusCode مختلف
+        if (ex is UnauthorizedAccessException)
+        {
+            statusCode = (int)HttpStatusCode.Unauthorized;
+            message = "غير مصرح لك بالوصول.";
+        }
+        else if (ex is KeyNotFoundException)
+        {
+            statusCode = (int)HttpStatusCode.NotFound;
+            message = "العنصر المطلوب غير موجود.";
+        }
+        else if (ex is ArgumentException)
+        {
+            statusCode = (int)HttpStatusCode.BadRequest;
+            message = "البيانات المرسلة غير صحيحة.";
+        }
+        else
+        {
+            // لو انت في بيئة Development وعايز تظهر التفاصيل:
+            if (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development")
             {
-                await _next(context);
+                message = ex.Message;
             }
-            catch (Exception ex)
-            {
-                await HandleExceptionAsync(context, ex);
-            }
         }
 
-        private async Task HandleExceptionAsync(HttpContext context, Exception ex)
+        context.Response.ContentType = "application/json";
+        context.Response.StatusCode = statusCode;
+
+        var apiResponse = new ApiResponse<string>
         {
-            var errorId = Guid.NewGuid().ToString("N"); // توليد Error ID
+            Code = statusCode,
+            Status = "Error",
+            Result = message,
+            ErrorId = errorId
+        };
 
-            _logger.Error(ex, $"[ErrorId: {errorId}] An unhandled exception occurred."); // تسجيله في الـ log
+        var json = JsonSerializer.Serialize(apiResponse, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        });
 
-            context.Response.ContentType = "application/json";
-
-            var statusCode = ex switch
-            {
-                UnauthorizedAccessException => (int)HttpStatusCode.Unauthorized,
-                KeyNotFoundException => (int)HttpStatusCode.NotFound,
-                ArgumentException => (int)HttpStatusCode.BadRequest,
-                _ => (int)HttpStatusCode.InternalServerError
-            };
-
-            context.Response.StatusCode = statusCode;
-
-            var result = JsonSerializer.Serialize(new
-            {
-                statusCode,
-                message = statusCode switch
-                {
-                    400 => "البيانات المرسلة غير صحيحة.",
-                    401 => "غير مصرح لك بالوصول.",
-                    404 => "العنصر المطلوب غير موجود.",
-                    _ => "حدث خطأ غير متوقع. برجاء المحاولة لاحقاً."
-                },
-                errorId
-            });
-
-            await context.Response.WriteAsync(result);
-        }
-
-
-        #endregion
-
+        await context.Response.WriteAsync(json);
     }
 }

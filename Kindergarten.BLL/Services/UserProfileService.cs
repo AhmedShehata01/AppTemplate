@@ -1,4 +1,5 @@
-﻿using AutoMapper;
+﻿using System.Text.Json;
+using AutoMapper;
 using Kindergarten.BLL.Helper;
 using Kindergarten.BLL.Models;
 using Kindergarten.BLL.Models.ActivityLogDTO;
@@ -56,16 +57,15 @@ namespace Kindergarten.BLL.Services
         {
             var existingProfile = await _db.UserBasicProfiles.FindAsync(userId);
 
-            if (existingProfile != null && existingProfile.Status != UserStatus.rejected)
+            if (existingProfile != null)
             {
-                // لا يُسمح بإنشاء أو تعديل الملف الشخصي إذا لم يكن مرفوضًا
-                return false;
-            }
+                if (existingProfile.Status != UserStatus.rejected)
+                {
+                    throw new InvalidOperationException("لا يمكن تعديل الملف الشخصي إلا إذا كان مرفوضًا.");
+                }
 
-            if (existingProfile != null && existingProfile.Status == UserStatus.rejected)
-            {
                 // تعديل الملف المرفوض
-                _mapper.Map(dto, existingProfile); // تحديث الخصائص من الـ DTO إلى الـ Profile
+                _mapper.Map(dto, existingProfile);
                 existingProfile.Status = UserStatus.pendingApproval;
                 existingProfile.SubmittedAt = DateTime.UtcNow;
 
@@ -79,72 +79,65 @@ namespace Kindergarten.BLL.Services
                 profile.Status = UserStatus.pendingApproval;
                 profile.SubmittedAt = DateTime.UtcNow;
 
-                _db.UserBasicProfiles.Add(profile);
+                await _db.UserBasicProfiles.AddAsync(profile);
             }
 
             var result = await _db.SaveChangesAsync();
 
-            if (result > 0)
+            if (result <= 0)
             {
-                // إرسال إشعار إلى الإدارة
-                var adminEmail = _adminSettings.Value.NotificationEmail;
-                var user = await _userManager.FindByIdAsync(userId);
-
-                var emailBody = $@"
-                    <html dir='rtl'>
-                    <body style='font-family: Tahoma, sans-serif; background-color: #f9f9f9; padding: 20px;'>
-                        <div style='background-color: #fff; padding: 20px; border-radius: 10px; border: 1px solid #ddd;'>
-                            <h2 style='color: #2d89ef;'>طلب مراجعة بيانات موظف جديد</h2>
-                            <p>قام الموظف التالي باستكمال بياناته الشخصية ويحتاج إلى مراجعة وموافقة الإدارة:</p>
-                            <ul style='line-height: 1.8;'>
-                                <li><strong>الاسم:</strong> {user.UserName}</li>
-                                <li><strong>البريد الإلكتروني:</strong> {user.Email}</li>
-                                <li><strong>رقم الهاتف:</strong> {user.PhoneNumber}</li>
-                            </ul>
-                            <p>يرجى مراجعة حسابه من لوحة التحكم وتفعيله إذا كانت البيانات صحيحة.</p>
-                        </div>
-                    </body>
-                    </html>";
-
-                await _emailService.SendEmailAsync(adminEmail, "طلب مراجعة موظف جديد", emailBody);
-
-                return true;
+                throw new InvalidOperationException("فشل حفظ البيانات. يرجى المحاولة لاحقًا.");
             }
 
-            return false;
+            // إرسال إشعار إلى الإدارة
+            var adminEmail = _adminSettings.Value.NotificationEmail;
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+                throw new KeyNotFoundException("المستخدم غير موجود.");
+
+            var emailBody = $@"
+        <html dir='rtl'>
+        <body style='font-family: Tahoma, sans-serif; background-color: #f9f9f9; padding: 20px;'>
+            <div style='background-color: #fff; padding: 20px; border-radius: 10px; border: 1px solid #ddd;'>
+                <h2 style='color: #2d89ef;'>طلب مراجعة بيانات موظف جديد</h2>
+                <p>قام الموظف التالي باستكمال بياناته الشخصية ويحتاج إلى مراجعة وموافقة الإدارة:</p>
+                <ul style='line-height: 1.8;'>
+                    <li><strong>الاسم:</strong> {user.UserName}</li>
+                    <li><strong>البريد الإلكتروني:</strong> {user.Email}</li>
+                    <li><strong>رقم الهاتف:</strong> {user.PhoneNumber}</li>
+                </ul>
+                <p>يرجى مراجعة حسابه من لوحة التحكم وتفعيله إذا كانت البيانات صحيحة.</p>
+            </div>
+        </body>
+        </html>";
+
+            await _emailService.SendEmailAsync(adminEmail, "طلب مراجعة موظف جديد", emailBody);
+
+            return true;
         }
 
-        public async Task<UserStatus?> GetUserStatusAsync(string userId)
+
+        public async Task<UserStatus> GetUserStatusAsync(string userId)
         {
-            var profile = await _db.UserBasicProfiles
+            var status = await _db.UserBasicProfiles
                 .Where(p => p.UserId == userId)
                 .Select(p => p.Status)
                 .FirstOrDefaultAsync();
 
-            return profile;
+            if (status == default)
+                throw new KeyNotFoundException("الملف الشخصي للمستخدم غير موجود.");
+
+            return status;
         }
 
-        public async Task<ActionResultDTO> ReviewUserProfileByAdminAsync(ReviewUserProfileByAdminDTO dto, string? reviewedById, string? reviewedByUserName)
-        {
-            var profile = await _db.UserBasicProfiles.FirstOrDefaultAsync(p => p.UserId == dto.UserId);
-            if (profile == null)
-            {
-                return new ActionResultDTO
-                {
-                    Success = false,
-                    Message = "لم يتم العثور على بيانات الموظف."
-                };
-            }
 
-            var user = await _userManager.FindByIdAsync(dto.UserId);
-            if (user == null)
-            {
-                return new ActionResultDTO
-                {
-                    Success = false,
-                    Message = "المستخدم غير موجود."
-                };
-            }
+        public async Task ReviewUserProfileByAdminAsync(ReviewUserProfileByAdminDTO dto, string? reviewedById, string? reviewedByUserName)
+        {
+            var profile = await _db.UserBasicProfiles.FirstOrDefaultAsync(p => p.UserId == dto.UserId)
+                          ?? throw new KeyNotFoundException("لم يتم العثور على بيانات الموظف.");
+
+            var user = await _userManager.FindByIdAsync(dto.UserId)
+                        ?? throw new KeyNotFoundException("المستخدم غير موجود.");
 
             var oldStatus = profile.Status;
             var oldRejectionReason = profile.RejectionReason;
@@ -168,24 +161,19 @@ namespace Kindergarten.BLL.Services
                 var updateUserResult = await _userManager.UpdateAsync(user);
                 if (!updateUserResult.Succeeded)
                 {
-                    return new ActionResultDTO
-                    {
-                        Success = false,
-                        Message = "حدث خطأ أثناء تحديث بيانات المستخدم."
-                    };
+                    throw new InvalidOperationException("حدث خطأ أثناء تحديث بيانات المستخدم.");
                 }
             }
 
             await _db.SaveChangesAsync();
 
-            // تسجيل الـ Activity Log
-            var oldValuesJson = System.Text.Json.JsonSerializer.Serialize(new
+            var oldValuesJson = JsonSerializer.Serialize(new
             {
                 Status = oldStatus,
                 RejectionReason = oldRejectionReason
             });
 
-            var newValuesJson = System.Text.Json.JsonSerializer.Serialize(new
+            var newValuesJson = JsonSerializer.Serialize(new
             {
                 Status = profile.Status,
                 RejectionReason = profile.RejectionReason
@@ -212,7 +200,7 @@ namespace Kindergarten.BLL.Services
                 var message = dto.IsApproved
                     ? "<p>نود إعلامك أنه تمت مراجعة بياناتك من قبل الإدارة، وتم تفعيل حسابك بنجاح.</p>"
                     : $@"<p>نأسف لإبلاغك أنه تم رفض طلب تفعيل حسابك.</p>
-         <p><strong>سبب الرفض:</strong> {dto.RejectionReason}</p>";
+                    <p><strong>سبب الرفض:</strong> {dto.RejectionReason}</p>";
 
                 var emailBody = $@"
             <!DOCTYPE html>
@@ -258,12 +246,6 @@ namespace Kindergarten.BLL.Services
 
                 await _emailService.SendEmailAsync(user.Email, subject, emailBody);
             }
-
-            return new ActionResultDTO
-            {
-                Success = true,
-                Message = dto.IsApproved ? "تمت الموافقة على الملف الشخصي." : "تم رفض الملف الشخصي."
-            };
         }
 
 
@@ -341,7 +323,7 @@ namespace Kindergarten.BLL.Services
 
 
 
-        public async Task<GetUsersProfilesDTO?> GetUserProfileByUserIdAsync(string userId)
+        public async Task<GetUsersProfilesDTO> GetUserProfileByUserIdAsync(string userId)
         {
             var profile = await _db.UserBasicProfiles
                 .Include(p => p.User)
@@ -349,11 +331,11 @@ namespace Kindergarten.BLL.Services
                 .FirstOrDefaultAsync();
 
             if (profile == null)
-                return null;
+                throw new KeyNotFoundException("الملف الشخصي للمستخدم غير موجود.");
 
-            var result = _mapper.Map<GetUsersProfilesDTO>(profile);
-            return result;
+            return _mapper.Map<GetUsersProfilesDTO>(profile);
         }
+
 
         #endregion
     }
@@ -361,9 +343,9 @@ namespace Kindergarten.BLL.Services
     public interface IUserProfileService
     {
         Task<bool> CompleteBasicProfileAsync(string userId, CompleteBasicProfileDTO dto);
-        Task<UserStatus?> GetUserStatusAsync(string userId);
-        Task<ActionResultDTO> ReviewUserProfileByAdminAsync(ReviewUserProfileByAdminDTO dto, string? reviewedById, string? reviewedByUserName);
+        Task<UserStatus> GetUserStatusAsync(string userId);
+        Task ReviewUserProfileByAdminAsync(ReviewUserProfileByAdminDTO dto, string? reviewedById, string? reviewedByUserName);
         Task<PagedResult<GetUsersProfilesDTO>> GetAllUsersProfilesForAdminAsync(PaginationFilter filter);
-        Task<GetUsersProfilesDTO?> GetUserProfileByUserIdAsync(string userId);
+        Task<GetUsersProfilesDTO> GetUserProfileByUserIdAsync(string userId);
     }
 }

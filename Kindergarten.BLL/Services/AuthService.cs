@@ -13,6 +13,7 @@ using Kindergarten.DAL.Extend;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 
 namespace Kindergarten.BLL.Services
@@ -25,6 +26,7 @@ namespace Kindergarten.BLL.Services
         private readonly ApplicationContext _context;
         private readonly IActivityLogService _activityLogService;
         private readonly IEmailService _emailService;
+        private readonly ILogger<AuthService> _logger;
         private readonly string _googleClientId;
         private readonly string _facebookAppId;
         private readonly string _facebookAppSecret;
@@ -36,23 +38,25 @@ namespace Kindergarten.BLL.Services
             IConfiguration config,
             ApplicationContext context,
             IActivityLogService activityLogService,
-            IEmailService emailService)
+            IEmailService emailService,
+            ILogger<AuthService> logger)
         {
             _userManager = userManager;
             _config = config;
             _context = context;
             _activityLogService = activityLogService;
             _emailService = emailService;
+            _logger = logger;
             _googleClientId = _config["Google:ClientId"];
             _facebookAppId = _config["Facebook:AppId"];
             _facebookAppSecret = _config["Facebook:AppSecret"];
         }
-
         #endregion
+
 
         #region Auth Actions
 
-        public async Task<ApiResponse<string>> RegisterAsync(RegisterDTO model)
+        public async Task<string> RegisterAsync(RegisterDTO model)
         {
             var user = new ApplicationUser
             {
@@ -66,12 +70,7 @@ namespace Kindergarten.BLL.Services
             if (!result.Succeeded)
             {
                 var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-                return new ApiResponse<string>
-                {
-                    Code = 400,
-                    Status = "Failed",
-                    Result = errors
-                };
+                throw new InvalidOperationException(errors); // ❗ أو CustomException لو حبيت
             }
 
             await _activityLogService.CreateAsync(new ActivityLogCreateDTO
@@ -84,26 +83,16 @@ namespace Kindergarten.BLL.Services
                 PerformedByUserName = user.UserName
             });
 
-            return new ApiResponse<string>
-            {
-                Code = 200,
-                Status = "Success",
-                Result = "User registered successfully"
-            };
+            return "User registered successfully";
         }
 
-        public async Task<ApiResponse<string>> LoginAsync(LoginDTO model)
+        public async Task<string> LoginAsync(LoginDTO model)
         {
             var user = await _userManager.FindByEmailAsync(model.Email);
 
             if (user == null || !await _userManager.CheckPasswordAsync(user, model.Password))
             {
-                return new ApiResponse<string>
-                {
-                    Code = 401,
-                    Status = "Failed",
-                    Result = "Invalid credentials"
-                };
+                throw new UnauthorizedAccessException("Invalid credentials");
             }
 
             var roles = await _userManager.GetRolesAsync(user);
@@ -119,51 +108,29 @@ namespace Kindergarten.BLL.Services
                 PerformedByUserName = user.UserName
             });
 
-            return new ApiResponse<string>
-            {
-                Code = 200,
-                Status = "Success",
-                Result = jwtToken
-            };
+            return jwtToken;
         }
 
-        public async Task<ApiResponse<string>> ChangePasswordAsync(string userId, ChangePasswordDTO model)
+        public async Task<string> ChangePasswordAsync(string userId, ChangePasswordDTO model)
         {
             if (model.NewPassword == model.CurrentPassword)
             {
-                return new ApiResponse<string>
-                {
-                    Code = 400,
-                    Status = "Failed",
-                    Result = "New password must be different from current password"
-                };
+                throw new InvalidOperationException("New password must be different from current password.");
             }
 
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null)
             {
-                return new ApiResponse<string>
-                {
-                    Code = 404,
-                    Status = "Failed",
-                    Result = "User not found"
-                };
+                throw new KeyNotFoundException("User not found.");
             }
 
             var result = await _userManager.ChangePasswordAsync(user, model.CurrentPassword, model.NewPassword);
-
             if (!result.Succeeded)
             {
                 var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-                return new ApiResponse<string>
-                {
-                    Code = 400,
-                    Status = "Failed",
-                    Result = errors
-                };
+                throw new InvalidOperationException(errors);
             }
 
-            // ✅ Log after successful password change
             await _activityLogService.CreateAsync(new ActivityLogCreateDTO
             {
                 EntityName = nameof(ApplicationUser),
@@ -174,25 +141,49 @@ namespace Kindergarten.BLL.Services
                 PerformedByUserName = user.UserName
             });
 
-            return new ApiResponse<string>
-            {
-                Code = 200,
-                Status = "Success",
-                Result = "Password changed successfully"
-            };
+            return "Password changed successfully";
         }
 
-        public async Task<ApiResponse<string>> ForgotPasswordAsync(ForgotPasswordDto model)
+        public async Task<string> ChangePasswordFirstTimeAsync(string userId, ChangePasswordFirstTimeDto model)
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+                throw new KeyNotFoundException("User not found.");
+
+            var isOldPasswordCorrect = await _userManager.CheckPasswordAsync(user, model.OldPassword);
+            if (!isOldPasswordCorrect)
+                throw new UnauthorizedAccessException("كلمة المرور الحالية غير صحيحة.");
+
+            if (model.OldPassword == model.NewPassword)
+                throw new InvalidOperationException("لا يمكن استخدام نفس كلمة المرور القديمة.");
+
+            if (model.NewPassword != model.ConfirmPassword)
+                throw new InvalidOperationException("كلمة المرور الجديدة غير متطابقة.");
+
+            var result = await _userManager.ChangePasswordAsync(user, model.OldPassword, model.NewPassword);
+            if (!result.Succeeded)
+            {
+                var errors = result.Errors.Select(e => e.Description).ToList();
+                throw new InvalidOperationException(string.Join(", ", errors));
+            }
+
+            user.IsFirstLogin = false;
+            await _userManager.UpdateAsync(user);
+
+            var roles = await _userManager.GetRolesAsync(user) ?? new List<string>();
+            var token = await GenerateJwtTokenAsync(user, roles);
+
+            return token;
+        }
+
+
+        public async Task<string> ForgotPasswordAsync(ForgotPasswordDto model)
         {
             var user = await _userManager.FindByEmailAsync(model.Email);
             if (user == null)
             {
-                return new ApiResponse<string>
-                {
-                    Code = 200,
-                    Status = "Success",
-                    Result = "إذا كان البريد الإلكتروني مسجلاً، سيتم إرسال كلمة مرور جديدة إليه."
-                };
+                // هنا مش هنرمي Exception لأننا دايمًا بنرجع نفس الرسالة
+                return "إذا كان البريد الإلكتروني مسجلاً، سيتم إرسال كلمة مرور جديدة إليه.";
             }
 
             var newPassword = PasswordGenerator.GenerateSecureTemporaryPassword();
@@ -202,12 +193,7 @@ namespace Kindergarten.BLL.Services
             if (!result.Succeeded)
             {
                 var errors = result.Errors.Select(e => e.Description).ToList();
-                return new ApiResponse<string>
-                {
-                    Code = 400,
-                    Status = "ResetPasswordFailed",
-                    Result = string.Join(", ", errors)
-                };
+                throw new InvalidOperationException(string.Join(", ", errors));
             }
 
             user.IsFirstLogin = true;
@@ -302,12 +288,7 @@ namespace Kindergarten.BLL.Services
                 "إعادة تعيين كلمة المرور - نظام الحضانة",
                 emailBody);
 
-            return new ApiResponse<string>
-            {
-                Code = 200,
-                Status = "Success",
-                Result = "تم إرسال كلمة مرور جديدة إلى بريدك الإلكتروني."
-            };
+            return "تم إرسال كلمة مرور جديدة إلى بريدك الإلكتروني.";
         }
 
         public async Task<string> GenerateJwtTokenAsync(ApplicationUser user, IList<string> roles)
@@ -485,11 +466,12 @@ namespace Kindergarten.BLL.Services
     {
         #region Auth Actions
 
-        Task<ApiResponse<string>> RegisterAsync(RegisterDTO model);
-        Task<ApiResponse<string>> LoginAsync(LoginDTO model);
-        Task<ApiResponse<string>> ChangePasswordAsync(string userId, ChangePasswordDTO model);
-        Task<ApiResponse<string>> ForgotPasswordAsync(ForgotPasswordDto model);
+        Task<string> RegisterAsync(RegisterDTO model);
+        Task<string> LoginAsync(LoginDTO model);
+        Task<string> ChangePasswordAsync(string userId, ChangePasswordDTO model);
+        Task<string> ForgotPasswordAsync(ForgotPasswordDto model);
         Task<string> GenerateJwtTokenAsync(ApplicationUser user, IList<string> roles);
+        Task<string> ChangePasswordFirstTimeAsync(string userId, ChangePasswordFirstTimeDto model);
 
         #endregion
 

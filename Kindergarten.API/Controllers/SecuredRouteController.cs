@@ -27,258 +27,182 @@ namespace Kindergarten.API.Controllers
         [HttpGet("GetAllPaginated")]
         public async Task<IActionResult> GetAllPaginated([FromQuery] PaginationFilter filter)
         {
-            try
-            {
-                var pagedResult = await _securedRouteService.GetAllRoutesAsync(filter);
+            var pagedResult = await _securedRouteService.GetAllRoutesAsync(filter);
 
-                return Ok(new ApiResponse<PagedResult<SecuredRouteDTO>>
-                {
-                    Code = 200,
-                    Status = "Success",
-                    Result = pagedResult
-                });
-            }
-            catch (Exception ex)
+            return Ok(new ApiResponse<PagedResult<SecuredRouteDTO>>
             {
-                return StatusCode(500, new ApiResponse<string>
-                {
-                    Code = 500,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = StatusCodes.Status200OK,
+                Status = "Success",
+                Result = pagedResult
+            });
         }
 
-
-        [HttpGet("getById/{id}")]
-        public async Task<ActionResult<ApiResponse<object>>> GetById(int id)
+        [HttpGet("GetById/{id}")]
+        public async Task<ActionResult<ApiResponse<SecuredRouteDTO>>> GetById(int id)
         {
-            try
-            {
-                var result = await _securedRouteService.GetRouteByIdAsync(id);
-                if (result == null)
-                {
-                    return Ok(new ApiResponse<string>
-                    {
-                        Code = 404,
-                        Status = "NotFound",
-                        Result = "Route not found"
-                    });
-                }
+            // نترك الـService يرمي KeyNotFoundException لو لم يجد المسار
+            var dto = await _securedRouteService.GetRouteByIdAsync(id);
 
-                return Ok(new ApiResponse<SecuredRouteDTO>
-                {
-                    Code = 200,
-                    Status = "Success",
-                    Result = result
-                });
-            }
-            catch (Exception ex)
+            var response = new ApiResponse<SecuredRouteDTO>
             {
-                return Ok(new ApiResponse<string>
-                {
-                    Code = 500,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = StatusCodes.Status200OK,
+                Status = "Success",
+                Result = dto
+            };
+
+            return Ok(response);
         }
 
-        [HttpPost("create")]
-        public async Task<ActionResult<ApiResponse<object>>> Create([FromBody] CreateSecuredRouteDTO dto)
+        [HttpPost("Create")]
+        public async Task<ActionResult<ApiResponse<int>>> Create([FromBody] CreateSecuredRouteDTO dto)
         {
-            try
-            {
-                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-                if (string.IsNullOrEmpty(userId))
-                {
-                    return Unauthorized(new ApiResponse<string>
-                    {
-                        Code = 401,
-                        Status = "Unauthorized",
-                        Result = "User ID not found in token"
-                    });
-                }
+            // 1. التحقق من صحة المدخلات
+            if (!ModelState.IsValid)
+                return ValidationProblem();
 
-                var id = await _securedRouteService.CreateRouteAsync(dto, CurrentUserId, CurrentUserName);
+            // 2. استدعاء الService
+            var id = await _securedRouteService.CreateRouteAsync(dto, CurrentUserId, CurrentUserName);
 
-                return Ok(new ApiResponse<int>
-                {
-                    Code = 201,
-                    Status = "Created",
-                    Result = id
-                });
-            }
-            catch (Exception ex)
+            // 3. إرجاع 201 Created مع الـ Location ورقم المعرف
+            var response = new ApiResponse<int>
             {
-                return Ok(new ApiResponse<string>
-                {
-                    Code = 400,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = StatusCodes.Status201Created,
+                Status = "Created",
+                Result = id
+            };
+
+            return CreatedAtAction(nameof(GetById), new { id }, response);
         }
+
 
         [HttpPut("update")]
-        public async Task<ActionResult<ApiResponse<object>>> Update([FromBody] UpdateSecuredRouteDTO dto)
+        public async Task<ActionResult<ApiResponse<bool>>> Update([FromBody] UpdateSecuredRouteDTO dto)
         {
-            try
+            // 1. تحقق من صحة المدخلات ضمن ApiResponse موحد
+            if (!ModelState.IsValid)
             {
-                var updated = await _securedRouteService.UpdateRouteAsync(dto, CurrentUserId, CurrentUserName);
-                if (!updated)
-                {
-                    return Ok(new ApiResponse<string>
-                    {
-                        Code = 404,
-                        Status = "NotFound",
-                        Result = "Route not found"
-                    });
-                }
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
 
-                return Ok(new ApiResponse<bool>
+                return BadRequest(new ApiResponse<List<string>>
                 {
-                    Code = 200,
-                    Status = "Success",
-                    Result = true
+                    Code = StatusCodes.Status400BadRequest,
+                    Status = "ValidationError",
+                    Result = errors
                 });
             }
-            catch (Exception ex)
+
+            // 2. دع الـService يرمي Exceptions المناسبة (KeyNotFoundException → 404, InvalidOperationException → 400, ...)
+            await _securedRouteService.UpdateRouteAsync(dto, CurrentUserId, CurrentUserName);
+
+            // 3. إعادة النجاح
+            return Ok(new ApiResponse<bool>
             {
-                return Ok(new ApiResponse<string>
-                {
-                    Code = 400,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = StatusCodes.Status200OK,
+                Status = "Success",
+                Result = true
+            });
         }
+
+
 
         [HttpDelete("delete/{id}")]
-        public async Task<ActionResult<ApiResponse<object>>> Delete(int id)
+        public async Task<ActionResult<ApiResponse<bool>>> Delete(int id)
         {
-            try
-            {
-                var deleted = await _securedRouteService.DeleteRouteAsync(id, CurrentUserId, CurrentUserName);
-                if (!deleted)
-                {
-                    return Ok(new ApiResponse<string>
-                    {
-                        Code = 404,
-                        Status = "NotFound",
-                        Result = "Route not found or already deleted"
-                    });
-                }
+            // 1. ندع الـService يرمي KeyNotFoundException لو المسار غير موجود
+            await _securedRouteService.DeleteRouteAsync(id, CurrentUserId, CurrentUserName);
 
-                return Ok(new ApiResponse<bool>
-                {
-                    Code = 200,
-                    Status = "Deleted",
-                    Result = true
-                });
-            }
-            catch (Exception ex)
+            // 2. نعيد ApiResponse موحّد
+            return Ok(new ApiResponse<bool>
             {
-                return Ok(new ApiResponse<string>
-                {
-                    Code = 500,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = StatusCodes.Status200OK,
+                Status = "Deleted",
+                Result = true
+            });
         }
+
 
         [HttpPost("assign-roles")]
-        public async Task<ActionResult<ApiResponse<object>>> AssignRoles([FromBody] AssignRolesToRouteDTO dto)
+        public async Task<ActionResult<ApiResponse<bool>>> AssignRoles([FromBody] AssignRolesToRouteDTO dto)
         {
-            try
+            // 1. التحقق من صحة بيانات الـ DTO
+            if (!ModelState.IsValid)
             {
-                var result = await _securedRouteService.AssignRolesAsync(dto, CurrentUserId, CurrentUserName);
-                if (!result)
-                {
-                    return Ok(new ApiResponse<string>
-                    {
-                        Code = 400,
-                        Status = "Failed",
-                        Result = "Failed to assign roles"
-                    });
-                }
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
 
-                return Ok(new ApiResponse<bool>
+                return BadRequest(new ApiResponse<List<string>>
                 {
-                    Code = 200,
-                    Status = "RolesAssigned",
-                    Result = true
+                    Code = StatusCodes.Status400BadRequest,
+                    Status = "ValidationError",
+                    Result = errors
                 });
             }
-            catch (Exception ex)
+
+            // 2. دع الـService يرمي Exceptions مناسبة (ArgumentNullException أو KeyNotFoundException)
+            await _securedRouteService.AssignRolesAsync(dto, CurrentUserId, CurrentUserName);
+
+            // 3. إعادة ApiResponse ناجح
+            return Ok(new ApiResponse<bool>
             {
-                return Ok(new ApiResponse<string>
-                {
-                    Code = 500,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = StatusCodes.Status200OK,
+                Status = "RolesAssigned",
+                Result = true
+            });
         }
+
 
         [HttpPost("unassign-role")]
-        public async Task<ActionResult<ApiResponse<object>>> UnassignRole([FromBody] UnassignRoleFromRouteDTO dto)
+        public async Task<ActionResult<ApiResponse<bool>>> UnassignRole([FromBody] UnassignRoleFromRouteDTO dto)
         {
-            try
+            // 1. التحقق من صحة بيانات الـ DTO
+            if (!ModelState.IsValid)
             {
-                var result = await _securedRouteService.UnassignRoleAsync(dto, CurrentUserId, CurrentUserName);
-                if (!result)
-                {
-                    return Ok(new ApiResponse<string>
-                    {
-                        Code = 400,
-                        Status = "Failed",
-                        Result = "Role not assigned to this route"
-                    });
-                }
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
 
-                return Ok(new ApiResponse<bool>
+                return BadRequest(new ApiResponse<List<string>>
                 {
-                    Code = 200,
-                    Status = "RoleUnassigned",
-                    Result = true
+                    Code = StatusCodes.Status400BadRequest,
+                    Status = "ValidationError",
+                    Result = errors
                 });
             }
-            catch (Exception ex)
+
+            // 2. استدعاء الـ Service (سيرمي ArgumentNullException أو KeyNotFoundException على حسب الحالة)
+            await _securedRouteService.UnassignRoleAsync(dto, CurrentUserId, CurrentUserName);
+
+            // 3. إعادة ApiResponse ناجح
+            return Ok(new ApiResponse<bool>
             {
-                return Ok(new ApiResponse<string>
-                {
-                    Code = 500,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = StatusCodes.Status200OK,
+                Status = "RoleUnassigned",
+                Result = true
+            });
         }
+
 
         [HttpGet("routes-with-roles")]
-        public async Task<ActionResult<ApiResponse<object>>> GetRoutesWithRoles()
+        public async Task<ActionResult<ApiResponse<List<RouteWithRolesDTO>>>> GetRoutesWithRoles()
         {
-            try
+            // ندع الـ Service يرمي KeyNotFoundException لو القائمة فارغة (404)
+            var result = await _securedRouteService.GetRoutesWithRolesAsync();
+
+            // نعيد ApiResponse مغلف دومًا
+            return Ok(new ApiResponse<List<RouteWithRolesDTO>>
             {
-                var result = await _securedRouteService.GetRoutesWithRolesAsync();
-                return Ok(new ApiResponse<List<RouteWithRolesDTO>>
-                {
-                    Code = 200,
-                    Status = "Success",
-                    Result = result
-                });
-            }
-            catch (Exception ex)
-            {
-                return Ok(new ApiResponse<string>
-                {
-                    Code = 500,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = StatusCodes.Status200OK,
+                Status = "Success",
+                Result = result
+            });
         }
+
         #endregion
     }
 }

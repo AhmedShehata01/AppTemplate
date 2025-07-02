@@ -31,340 +31,152 @@ namespace Kindergarten.API.Controllers
         [HttpGet("GetAllPaginated")]
         public async Task<IActionResult> GetAllPaginated([FromQuery] PaginationFilter filter)
         {
-            try
-            {
-                var pagedResult = await _kindergartenService.GetAllKgsAsync(filter);
+            var pagedResult = await _kindergartenService.GetAllKgsAsync(filter);
 
-                return Ok(new ApiResponse<PagedResult<KindergartenDTO>>
-                {
-                    Code = (int)HttpStatusCode.OK,
-                    Status = "Success",
-                    Result = pagedResult
-                });
-            }
-            catch (Exception ex)
+            return Ok(new ApiResponse<PagedResult<KindergartenDTO>>
             {
-                return StatusCode((int)HttpStatusCode.InternalServerError, new ApiResponse<string>
-                {
-                    Code = (int)HttpStatusCode.InternalServerError,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = 200,
+                Status = "Success",
+                Result = pagedResult
+            });
         }
+
 
         // GET: api/Kindergarten/GetById/5
         [HttpGet("GetById/{id}")]
         public async Task<IActionResult> GetById(int id)
         {
-            try
-            {
-                var kg = await _kindergartenService.GetKgByIdAsync(id);
-                if (kg == null)
-                    return NotFound(new ApiResponse<string>
-                    {
-                        Code = (int)HttpStatusCode.NotFound,
-                        Status = "Error",
-                        Result = $"Kindergarten with ID {id} not found."
-                    });
+            var kg = await _kindergartenService.GetKgByIdAsync(id);
 
-                return Ok(new ApiResponse<KindergartenDTO>
-                {
-                    Code = (int)HttpStatusCode.OK,
-                    Status = "Success",
-                    Result = kg
-                });
-            }
-            catch (Exception ex)
+            return Ok(new ApiResponse<KindergartenDTO>
             {
-                return StatusCode((int)HttpStatusCode.InternalServerError, new ApiResponse<string>
-                {
-                    Code = (int)HttpStatusCode.InternalServerError,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = 200,
+                Status = "Success",
+                Result = kg
+            });
         }
 
-        // POST: api/Kindergarten/Create
+        // PUT: api/Kindergarten/Create
         [HttpPost("Create")]
         public async Task<IActionResult> Create([FromBody] KindergartenCreateDTO dto)
         {
-            try
-            {
-                if (dto == null)
-                {
-                    return BadRequest(new ApiResponse<string>
-                    {
-                        Code = (int)HttpStatusCode.BadRequest,
-                        Status = "Validation Error",
-                        Result = "Invalid data."
-                    });
-                }
-
-                if (!ModelState.IsValid)
-                {
-                    var errors = ModelState.Values
-                                           .SelectMany(v => v.Errors)
-                                           .Select(e => e.ErrorMessage)
-                                           .ToList();
-
-                    return BadRequest(new ApiResponse<object>
-                    {
-                        Code = (int)HttpStatusCode.BadRequest,
-                        Status = "Validation Error",
-                        Result = errors
-                    });
-                }
-
-
-                var createdByUserName = User.Identity?.Name ?? "Unknown";
-                var createdByUserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
-                var createdKg = await _kindergartenService.CreateKgAsync(dto, createdByUserId, createdByUserName);
-
-                return CreatedAtAction(nameof(GetById), new { id = createdKg.Id }, new ApiResponse<KindergartenDTO>
-                {
-                    Code = (int)HttpStatusCode.Created,
-                    Status = "Success",
-                    Result = createdKg
-                });
-            }
-            catch (InvalidOperationException ex)
+            if (dto == null)
             {
                 return BadRequest(new ApiResponse<string>
                 {
-                    Code = (int)HttpStatusCode.BadRequest,
+                    Code = 400,
                     Status = "Validation Error",
-                    Result = ex.Message
+                    Result = "Invalid data."
                 });
             }
-            catch (Exception ex)
+
+            var createdKg = await _kindergartenService.CreateKgAsync(dto, CurrentUserId, CurrentUserName);
+
+            return CreatedAtAction(nameof(GetById), new { id = createdKg.Id }, new ApiResponse<KindergartenDTO>
             {
-                return StatusCode((int)HttpStatusCode.InternalServerError, new ApiResponse<string>
-                {
-                    Code = (int)HttpStatusCode.InternalServerError,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = 201,
+                Status = "Success",
+                Result = createdKg
+            });
         }
+
 
         // PUT: api/Kindergarten/Update
         [HttpPut("Update")]
         public async Task<IActionResult> Update([FromBody] KindergartenUpdateDTO dto, string? userComment)
         {
-            try
-            {
-                if (dto == null)
-                {
-                    return BadRequest(new ApiResponse<string>
-                    {
-                        Code = (int)HttpStatusCode.BadRequest,
-                        Status = "Validation Error",
-                        Result = "Invalid data."
-                    });
-                }
-
-                if (!ModelState.IsValid)
-                {
-                    var errors = ModelState.Values
-                                           .SelectMany(v => v.Errors)
-                                           .Select(e => e.ErrorMessage)
-                                           .ToList();
-
-                    return BadRequest(new ApiResponse<object>
-                    {
-                        Code = (int)HttpStatusCode.BadRequest,
-                        Status = "Validation Error",
-                        Result = errors
-                    });
-                }
-
-                // ✅ جلب UserId و UserName بنفس طريقة الـ Create
-                var updatedByUserName = User.Identity?.Name ?? "Unknown";
-                var updatedByUserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
-
-                if (string.IsNullOrEmpty(updatedByUserId))
-                {
-                    return Unauthorized(new ApiResponse<string>
-                    {
-                        Code = (int)HttpStatusCode.Unauthorized,
-                        Status = "Unauthorized",
-                        Result = "User Id is missing from token."
-                    });
-                }
-
-                var updatedKg = await _kindergartenService.UpdateKgAsync(dto, updatedByUserId, updatedByUserName, userComment);
-
-                if (updatedKg == null)
-                {
-                    return NotFound(new ApiResponse<string>
-                    {
-                        Code = (int)HttpStatusCode.NotFound,
-                        Status = "Error",
-                        Result = $"Kindergarten with ID {dto.Id} not found."
-                    });
-                }
-
-                return Ok(new ApiResponse<KindergartenDTO>
-                {
-                    Code = (int)HttpStatusCode.OK,
-                    Status = "Success",
-                    Result = updatedKg
-                });
-            }
-            catch (InvalidOperationException ex)
+            if (dto == null)
             {
                 return BadRequest(new ApiResponse<string>
                 {
-                    Code = (int)HttpStatusCode.BadRequest,
+                    Code = 400,
                     Status = "Validation Error",
-                    Result = ex.Message
+                    Result = "Invalid data."
                 });
             }
-            catch (Exception ex)
+
+            if (!ModelState.IsValid)
             {
-                return StatusCode((int)HttpStatusCode.InternalServerError, new ApiResponse<string>
+                var errors = ModelState.Values
+                                       .SelectMany(v => v.Errors)
+                                       .Select(e => e.ErrorMessage)
+                                       .ToList();
+
+                return BadRequest(new ApiResponse<object>
                 {
-                    Code = (int)HttpStatusCode.InternalServerError,
-                    Status = "Error",
-                    Result = ex.Message
+                    Code = 400,
+                    Status = "Validation Error",
+                    Result = errors
                 });
             }
+
+            var updatedKg = await _kindergartenService.UpdateKgAsync(dto, CurrentUserId, CurrentUserName, userComment);
+
+            return Ok(new ApiResponse<KindergartenDTO>
+            {
+                Code = 200,
+                Status = "Success",
+                Result = updatedKg
+            });
         }
 
 
+
+        // DELETE: api/Kindergarten/Delete/5
         // DELETE: api/Kindergarten/Delete/5
         [HttpDelete("Delete/{id}")]
         public async Task<IActionResult> Delete(int id, string? userComment)
         {
-            try
-            {
-                var userName = User.Identity?.Name ?? "Unknown";
-                var userId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+            var success = await _kindergartenService.DeleteKgAsync(id, CurrentUserId, CurrentUserName, userComment);
 
-                var success = await _kindergartenService.DeleteKgAsync(id, userId, userName, userComment);
-
-                if (!success)
-                {
-                    return NotFound(new ApiResponse<string>
-                    {
-                        Code = (int)HttpStatusCode.NotFound,
-                        Status = "Error",
-                        Result = $"Kindergarten with ID {id} not found."
-                    });
-                }
-
-                return Ok(new ApiResponse<string>
-                {
-                    Code = (int)HttpStatusCode.OK,
-                    Status = "Success",
-                    Result = "Kindergarten deleted successfully."
-                });
-            }
-            catch (DbUpdateException)
+            return Ok(new ApiResponse<string>
             {
-                return BadRequest(new ApiResponse<string>
-                {
-                    Code = (int)HttpStatusCode.BadRequest,
-                    Status = "Delete Failed",
-                    Result = "Cannot delete this kindergarten because it has related data."
-                });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode((int)HttpStatusCode.InternalServerError, new ApiResponse<string>
-                {
-                    Code = (int)HttpStatusCode.InternalServerError,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = 200,
+                Status = "Success",
+                Result = "Kindergarten deleted successfully."
+            });
         }
+
 
         // PUT: api/Kindergarten/SoftDelete/5
         [HttpPut("SoftDelete/{id}")]
         public async Task<IActionResult> SoftDelete(int id, string? userComment)
         {
-            try
-            {
-                var userName = User.Identity?.Name ?? "Unknown";
-                var userId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+            var success = await _kindergartenService.SoftDeleteKgWithBranchesAsync(id, CurrentUserId, CurrentUserName, userComment);
 
-                var success = await _kindergartenService.SoftDeleteKgWithBranchesAsync(id, userId, userName, userComment);
-
-                if (!success)
-                {
-                    return NotFound(new ApiResponse<string>
-                    {
-                        Code = (int)HttpStatusCode.NotFound,
-                        Status = "Error",
-                        Result = $"Kindergarten with ID {id} not found."
-                    });
-                }
-
-                return Ok(new ApiResponse<string>
-                {
-                    Code = (int)HttpStatusCode.OK,
-                    Status = "Success",
-                    Result = "Kindergarten soft deleted successfully."
-                });
-            }
-            catch (DbUpdateException)
+            return Ok(new ApiResponse<string>
             {
-                return BadRequest(new ApiResponse<string>
-                {
-                    Code = (int)HttpStatusCode.BadRequest,
-                    Status = "Delete Failed",
-                    Result = "Cannot soft delete this kindergarten because it has related data."
-                });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode((int)HttpStatusCode.InternalServerError, new ApiResponse<string>
-                {
-                    Code = (int)HttpStatusCode.InternalServerError,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = 200,
+                Status = "Success",
+                Result = "Kindergarten soft deleted successfully."
+            });
         }
 
-        // GET: api/Kindergarten/{id}/History
+
+        // GET: api/Kindergarten/History/{id}
         [HttpGet("History/{id}")]
         public async Task<IActionResult> GetKgHistory(int id)
         {
-            try
+            var logs = await _kindergartenService.GetKgHistoryByKgIdAsync(id);
+
+            if (!logs.Any())
             {
-                var logs = await _kindergartenService.GetKgHistoryByKgIdAsync(id);
-
-                if (logs == null || !logs.Any())
+                return NotFound(new ApiResponse<string>
                 {
-                    return Ok(new ApiResponse<string>
-                    {
-                        Code = 404,
-                        Status = "NotFound",
-                        Result = "No logs found for this kindergarten."
-                    });
-                }
-
-                return Ok(new ApiResponse<List<ActivityLogViewDTO>>
-                {
-                    Code = 200,
-                    Status = "Success",
-                    Result = logs
+                    Code = 404,
+                    Status = "NotFound",
+                    Result = "No logs found for this kindergarten."
                 });
             }
-            catch (Exception ex)
+
+            return Ok(new ApiResponse<List<ActivityLogViewDTO>>
             {
-                return StatusCode(500, new ApiResponse<string>
-                {
-                    Code = 500,
-                    Status = "Error",
-                    Result = ex.Message
-                });
-            }
+                Code = 200,
+                Status = "Success",
+                Result = logs
+            });
         }
+
 
         #endregion
 

@@ -7,6 +7,7 @@ using Kindergarten.DAL.Database;
 using Kindergarten.DAL.Entity.DRBRA;
 using Kindergarten.DAL.Enum;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace Kindergarten.BLL.Services
 {
@@ -79,12 +80,17 @@ namespace Kindergarten.BLL.Services
                 .Include(r => r.CreatedBy)
                 .FirstOrDefaultAsync(r => r.Id == id);
 
-            if (route == null) return null;
+            if (route == null)
+                throw new KeyNotFoundException($"المسار المؤمّن بالمعرّف {id} غير موجود.");
+
             return _mapper.Map<SecuredRouteDTO>(route);
         }
 
         public async Task<int> CreateRouteAsync(CreateSecuredRouteDTO dto, string? performedByUserId, string? performedByUserName)
         {
+            if (dto == null)
+                throw new ArgumentNullException(nameof(dto));
+
             var route = new SecuredRoute
             {
                 BasePath = dto.BasePath,
@@ -125,59 +131,71 @@ namespace Kindergarten.BLL.Services
 
         public async Task<bool> UpdateRouteAsync(UpdateSecuredRouteDTO dto, string? performedByUserId, string? performedByUserName)
         {
+            // 1. تحقق من صحة الـ DTO
+            if (dto == null)
+                throw new ArgumentNullException(nameof(dto), "بيانات التحديث غير صحيحة.");
+
+            // 2. جلب المسار مع الأدوار المرتبطة
             var existing = await _context.SecuredRoutes
                 .Include(r => r.RoleSecuredRoutes)
                 .FirstOrDefaultAsync(r => r.Id == dto.Id);
 
-            if (existing == null) return false;
+            // 3. إذا المسار مش موجود → KeyNotFoundException
+            if (existing == null)
+                throw new KeyNotFoundException($"المسار المؤمّن بالمعرّف {dto.Id} غير موجود.");
 
-            // تأكد مفيش تعارض في BasePath
-            if (await _context.SecuredRoutes.AnyAsync(r => r.Id != dto.Id && r.BasePath == dto.BasePath))
-                throw new Exception("Another route already uses the same base path.");
+            // 4. تأكد من عدم وجود مسار آخر بنفس BasePath
+            bool conflict = await _context.SecuredRoutes
+                .AnyAsync(r => r.Id != dto.Id && r.BasePath == dto.BasePath);
+            if (conflict)
+                throw new InvalidOperationException($"يوجد مسار آخر يستخدم BasePath '{dto.BasePath}'.");
 
-            // خذ نسخة من القيم القديمة (قبل التحديث)
+
+            // 5. حفظ قيم قديمة للتوثيق
             var oldValues = new
             {
                 existing.BasePath,
                 existing.Description,
                 RoleIds = existing.RoleSecuredRoutes.Select(rr => rr.RoleId).ToList()
             };
-            var oldValuesJson = System.Text.Json.JsonSerializer.Serialize(oldValues);
+            var oldValuesJson = JsonSerializer.Serialize(oldValues);
 
-            // ✏️ تحديث البيانات
+            // 6. تحديث بيانات المسار
             existing.BasePath = dto.BasePath;
             existing.Description = dto.Description;
 
-            // 🔄 تحديث الأدوار: حذف القديمة وإضافة الجديدة
-            _context.RoleSecuredRoutes.RemoveRange(existing.RoleSecuredRoutes);
 
+            // 7. إعادة تعيين الأدوار
+            _context.RoleSecuredRoutes.RemoveRange(existing.RoleSecuredRoutes);
             if (dto.RoleIds != null && dto.RoleIds.Any())
             {
-                existing.RoleSecuredRoutes = dto.RoleIds.Select(roleId => new RoleSecuredRoute
-                {
-                    RoleId = roleId,
-                    SecuredRouteId = existing.Id
-                }).ToList();
+                existing.RoleSecuredRoutes = dto.RoleIds
+                    .Select(roleId => new RoleSecuredRoute
+                    {
+                        SecuredRouteId = existing.Id,
+                        RoleId = roleId
+                    })
+                    .ToList();
             }
 
             await _context.SaveChangesAsync();
 
-            // سجل القيم الجديدة (بعد التحديث)
+            // 8. حفظ القيم الجديدة للتوثيق
             var newValues = new
             {
                 dto.BasePath,
                 dto.Description,
                 RoleIds = dto.RoleIds ?? new List<string>()
             };
-            var newValuesJson = System.Text.Json.JsonSerializer.Serialize(newValues);
+            var newValuesJson = JsonSerializer.Serialize(newValues);
 
-            // إنشاء سجل النشاط
+            // 9. تسجيل نشاط التحديث
             await _activityLogService.CreateAsync(new ActivityLogCreateDTO
             {
                 EntityName = "SecuredRoute",
                 EntityId = existing.Id.ToString(),
                 ActionType = ActivityActionType.Updated,
-                SystemComment = $"تم تحديث مسار مؤمن: {existing.BasePath}.",
+                SystemComment = $"تم تحديث مسار مؤمّن: {existing.BasePath}.",
                 PerformedByUserId = performedByUserId,
                 PerformedByUserName = performedByUserName,
                 OldValues = oldValuesJson,
@@ -190,14 +208,17 @@ namespace Kindergarten.BLL.Services
 
         public async Task<bool> DeleteRouteAsync(int id, string? performedByUserId, string? performedByUserName)
         {
+            // 1. جلب الكيان مع العلاقات
             var entity = await _context.SecuredRoutes
                 .Include(r => r.RoleSecuredRoutes)
-                .ThenInclude(rr => rr.Role)
+                    .ThenInclude(rr => rr.Role)
                 .FirstOrDefaultAsync(r => r.Id == id);
 
-            if (entity == null) return false;
+            // 2. لو مش موجود → نرمي KeyNotFoundException
+            if (entity == null)
+                throw new KeyNotFoundException($"المسار المؤمّن بالمعرّف {id} غير موجود.");
 
-            // تجهيز بيانات قديمة لتسجيلها في ال ActivityLog
+            // 3. تجهيز بيانات قديمة للتوثيق
             var oldValues = new
             {
                 entity.Id,
@@ -205,21 +226,21 @@ namespace Kindergarten.BLL.Services
                 entity.Description,
                 RoleIds = entity.RoleSecuredRoutes.Select(rr => rr.RoleId).ToList()
             };
-            var oldValuesJson = System.Text.Json.JsonSerializer.Serialize(oldValues);
+            var oldValuesJson = JsonSerializer.Serialize(oldValues);
 
-            // إزالة العلاقات المرتبطة
+            // 4. حذف العلاقات والكيان
             _context.RoleSecuredRoutes.RemoveRange(entity.RoleSecuredRoutes);
             _context.SecuredRoutes.Remove(entity);
 
             await _context.SaveChangesAsync();
 
-            // تسجيل الحدث
+            // 5. تسجيل نشاط الحذف
             await _activityLogService.CreateAsync(new ActivityLogCreateDTO
             {
                 EntityName = "SecuredRoute",
                 EntityId = id.ToString(),
                 ActionType = ActivityActionType.Deleted,
-                SystemComment = $"تم حذف مسار مؤمن: {entity.BasePath}.",
+                SystemComment = $"تم حذف مسار مؤمّن: {entity.BasePath}.",
                 PerformedByUserId = performedByUserId,
                 PerformedByUserName = performedByUserName,
                 OldValues = oldValuesJson,
@@ -232,18 +253,30 @@ namespace Kindergarten.BLL.Services
 
         public async Task<bool> AssignRolesAsync(AssignRolesToRouteDTO dto, string? performedByUserId, string? performedByUserName)
         {
+            // 1. التحقق من صحة الـ DTO
+            if (dto == null)
+                throw new ArgumentNullException(nameof(dto), "بيانات تعيين الأدوار غير صحيحة.");
+
+
+            // 2. جلب المسار مع العلاقات
             var route = await _context.SecuredRoutes
                 .Include(r => r.RoleSecuredRoutes)
                 .ThenInclude(rr => rr.Role)
                 .FirstOrDefaultAsync(r => r.Id == dto.SecuredRouteId);
-            if (route == null) return false;
 
+            // 3. إذا المسار غير موجود → KeyNotFoundException
+            if (route == null)
+                throw new KeyNotFoundException($"المسار المؤمّن بالمعرّف {dto.SecuredRouteId} غير موجود.");
+
+            // 4. احصل على الأدوار الجديدة فقط
             var existingRoleIds = route.RoleSecuredRoutes.Select(r => r.RoleId).ToHashSet();
-            var newRoleIds = dto.RoleIds.Except(existingRoleIds).ToList();
+            var newRoleIds = dto.RoleIds!.Except(existingRoleIds).ToList();
 
+            // 5. إذا لا توجد أدوار جديدة → OK
             if (!newRoleIds.Any())
                 return true;
 
+            // 6. أضف الأدوار الجديدة
             foreach (var roleId in newRoleIds)
             {
                 route.RoleSecuredRoutes.Add(new RoleSecuredRoute
@@ -255,14 +288,16 @@ namespace Kindergarten.BLL.Services
 
             await _context.SaveChangesAsync();
 
-            // تسجيل الـ ActivityLog لل Roles الجديدة المُضافة
+            // 7. سجل أسماء الأدوار الجديدة للتوثيق
             var addedRolesNames = await _context.Roles
                 .Where(r => newRoleIds.Contains(r.Id))
                 .Select(r => r.Name)
                 .ToListAsync();
 
-            var newValuesJson = System.Text.Json.JsonSerializer.Serialize(addedRolesNames);
+            var newValuesJson = JsonSerializer.Serialize(addedRolesNames);
 
+
+            // 8. تسجيل النشاط
             await _activityLogService.CreateAsync(new ActivityLogCreateDTO
             {
                 EntityName = "SecuredRouteRoles",
@@ -281,18 +316,32 @@ namespace Kindergarten.BLL.Services
 
         public async Task<bool> UnassignRoleAsync(UnassignRoleFromRouteDTO dto, string? performedByUserId, string? performedByUserName)
         {
+            // 1. تحقق من صحة الـ DTO
+            if (dto == null)
+                throw new ArgumentNullException(nameof(dto), "بيانات إلغاء تعيين الدور غير صحيحة.");
+
+            // 2. جلب السجل
             var record = await _context.RoleSecuredRoutes
                 .Include(r => r.Role)
                 .Include(r => r.SecuredRoute)
-                .FirstOrDefaultAsync(r => r.SecuredRouteId == dto.SecuredRouteId && r.RoleId == dto.RoleId);
-            if (record == null) return false;
+                .FirstOrDefaultAsync(r =>
+                    r.SecuredRouteId == dto.SecuredRouteId &&
+                    r.RoleId == dto.RoleId);
 
+            // 3. إذا السجل غير موجود → KeyNotFoundException
+            if (record == null)
+                throw new KeyNotFoundException(
+                    $"لا توجد علاقة بين المسار '{dto.SecuredRouteId}' والدور '{dto.RoleId}'.");
+
+            // 4. إزالة السجل وحفظ التغييرات
             _context.RoleSecuredRoutes.Remove(record);
             await _context.SaveChangesAsync();
 
+            // 5. تحضير البيانات للاحتفاظ بالسجل
             var roleName = record.Role?.Name ?? "Unknown Role";
             var routePath = record.SecuredRoute?.BasePath ?? "Unknown Route";
 
+            // 6. تسجيل النشاط
             await _activityLogService.CreateAsync(new ActivityLogCreateDTO
             {
                 EntityName = "SecuredRouteRoles",
@@ -301,12 +350,13 @@ namespace Kindergarten.BLL.Services
                 SystemComment = $"تم إزالة الدور '{roleName}' من المسار المؤمّن '{routePath}'.",
                 PerformedByUserId = performedByUserId,
                 PerformedByUserName = performedByUserName,
-                OldValues = System.Text.Json.JsonSerializer.Serialize(roleName),
+                OldValues = JsonSerializer.Serialize(roleName),
                 NewValues = null
             });
 
             return true;
         }
+
 
 
         public async Task<List<RouteWithRolesDTO>> GetRoutesWithRolesAsync()
@@ -316,11 +366,18 @@ namespace Kindergarten.BLL.Services
                     .ThenInclude(rr => rr.Role)
                 .ToListAsync();
 
+            if (!routes.Any())
+                throw new KeyNotFoundException("لا توجد مسارات مؤمنة.");
+
+
             return _mapper.Map<List<RouteWithRolesDTO>>(routes);
         }
 
         public async Task<bool> IsRoleAssignedToAnySecuredRouteAsync(string roleId)
         {
+            if (string.IsNullOrWhiteSpace(roleId))
+                throw new ArgumentNullException(nameof(roleId), "معرّف الدور مطلوب.");
+
             return await _context.RoleSecuredRoutes
                                  .AnyAsync(r => r.RoleId == roleId);
         }
