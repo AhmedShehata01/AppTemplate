@@ -109,7 +109,7 @@ namespace Kindergarten.API.Controllers
         {
             try
             {
-                var result = await _sidebarService.UpdateAsync(dto, CurrentUserId , CurrentUserName);
+                var result = await _sidebarService.UpdateAsync(dto, CurrentUserId, CurrentUserName);
                 if (!result)
                 {
                     return Ok(new ApiResponse<string>
@@ -143,7 +143,7 @@ namespace Kindergarten.API.Controllers
         {
             try
             {
-                var result = await _sidebarService.SoftDeleteAsync(id , CurrentUserId , CurrentUserName);
+                var result = await _sidebarService.SoftDeleteAsync(id, CurrentUserId, CurrentUserName);
                 if (!result)
                 {
                     return Ok(new ApiResponse<string>

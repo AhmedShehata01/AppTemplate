@@ -1,13 +1,13 @@
-﻿using Kindergarten.BLL.Helper;
+﻿using System.Security.Claims;
+using Kindergarten.BLL.Helper;
+using Kindergarten.BLL.Models;
 using Kindergarten.BLL.Models.UserProfileDTO;
-using System.Security.Claims;
 using Kindergarten.BLL.Services;
 using Kindergarten.DAL.Database;
 using Kindergarten.DAL.Extend;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Kindergarten.BLL.Models;
 
 namespace Kindergarten.API.Controllers
 {

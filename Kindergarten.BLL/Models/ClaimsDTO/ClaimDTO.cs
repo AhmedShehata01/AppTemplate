@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace Kindergarten.BLL.Models.ClaimsDTO
+﻿namespace Kindergarten.BLL.Models.ClaimsDTO
 {
     public class ClaimDTO
     {

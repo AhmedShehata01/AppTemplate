@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
-using System.Threading.Tasks;
-using AutoMapper;
+﻿using AutoMapper;
 using Kindergarten.BLL.Helper;
 using Kindergarten.BLL.Models;
 using Kindergarten.BLL.Models.ActivityLogDTO;
@@ -40,7 +34,7 @@ namespace Kindergarten.BLL.Services
             RoleManager<ApplicationRole> roleManager,
             IEmailService emailService,
             IHttpContextAccessor httpContextAccessor,
-            IMapper mapper, 
+            IMapper mapper,
             ApplicationContext db,
             IOptions<AdminSettings> adminSettings,
             IActivityLogService activityLogService)

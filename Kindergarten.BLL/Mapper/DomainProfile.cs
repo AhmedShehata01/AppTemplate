@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using AutoMapper;
+﻿using AutoMapper;
 using Kindergarten.BLL.Models.ActivityLogDTO;
 using Kindergarten.BLL.Models.BranchDTO;
 using Kindergarten.BLL.Models.DRBRADTO;

@@ -1,4 +1,5 @@
-﻿using Kindergarten.BLL.Helper;
+﻿using System.Security.Claims;
+using Kindergarten.BLL.Helper;
 using Kindergarten.BLL.Models.Auth;
 using Kindergarten.BLL.Services;
 using Kindergarten.BLL.Services.SendEmail;
@@ -6,7 +7,6 @@ using Kindergarten.DAL.Extend;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
 
 namespace Kindergarten.API.Controllers
 {

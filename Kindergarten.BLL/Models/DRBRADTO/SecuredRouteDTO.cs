@@ -1,12 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations.Schema;
-using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Kindergarten.DAL.Entity.DRBRA;
-using Kindergarten.DAL.Extend;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace Kindergarten.BLL.Models.DRBRADTO
 {

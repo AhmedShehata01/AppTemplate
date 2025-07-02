@@ -1,14 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Linq.Expressions;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Linq.Expressions;
 using Kindergarten.DAL.Database;
 using Kindergarten.DAL.Entity;
 using Microsoft.EntityFrameworkCore;
 
-namespace Kindergarten.BLL.Repository
+namespace Kindergarten.DAL.Repository
 {
     public class GenericRepository<TEntity, TKey> : IGenericRepository<TEntity, TKey> where TEntity : class
     {

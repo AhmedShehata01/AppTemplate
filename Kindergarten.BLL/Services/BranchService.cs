@@ -1,16 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Linq.Expressions;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Linq.Expressions;
 using AutoMapper;
 using Kindergarten.BLL.Extensions;
 using Kindergarten.BLL.Models;
 using Kindergarten.BLL.Models.BranchDTO;
-using Kindergarten.BLL.Repository;
 using Kindergarten.DAL.Database;
 using Kindergarten.DAL.Entity;
+using Kindergarten.DAL.Repository;
 using Microsoft.EntityFrameworkCore;
 
 namespace Kindergarten.BLL.Services

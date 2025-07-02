@@ -100,7 +100,7 @@ namespace Kindergarten.API.Controllers
                     });
                 }
 
-                var id = await _securedRouteService.CreateRouteAsync(dto, CurrentUserId , CurrentUserName);
+                var id = await _securedRouteService.CreateRouteAsync(dto, CurrentUserId, CurrentUserName);
 
                 return Ok(new ApiResponse<int>
                 {
@@ -125,7 +125,7 @@ namespace Kindergarten.API.Controllers
         {
             try
             {
-                var updated = await _securedRouteService.UpdateRouteAsync(dto, CurrentUserId , CurrentUserName);
+                var updated = await _securedRouteService.UpdateRouteAsync(dto, CurrentUserId, CurrentUserName);
                 if (!updated)
                 {
                     return Ok(new ApiResponse<string>
@@ -193,7 +193,7 @@ namespace Kindergarten.API.Controllers
         {
             try
             {
-                var result = await _securedRouteService.AssignRolesAsync(dto, CurrentUserId , CurrentUserName);
+                var result = await _securedRouteService.AssignRolesAsync(dto, CurrentUserId, CurrentUserName);
                 if (!result)
                 {
                     return Ok(new ApiResponse<string>
@@ -227,7 +227,7 @@ namespace Kindergarten.API.Controllers
         {
             try
             {
-                var result = await _securedRouteService.UnassignRoleAsync(dto, CurrentUserId , CurrentUserName);
+                var result = await _securedRouteService.UnassignRoleAsync(dto, CurrentUserId, CurrentUserName);
                 if (!result)
                 {
                     return Ok(new ApiResponse<string>

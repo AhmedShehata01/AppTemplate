@@ -1,23 +1,17 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Security.Claims;
+using System.Text.Json;
 using AutoMapper;
 using Kindergarten.BLL.Helper;
 using Kindergarten.BLL.Models;
+using Kindergarten.BLL.Models.ActivityLogDTO;
 using Kindergarten.BLL.Models.UserManagementDTO;
-using Kindergarten.BLL.Models.UserProfileDTO;
+using Kindergarten.BLL.Services.SendEmail;
 using Kindergarten.DAL.Database;
+using Kindergarten.DAL.Enum;
 using Kindergarten.DAL.Extend;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Http;
-using Kindergarten.BLL.Services.SendEmail;
-using Kindergarten.BLL.Models.ActivityLogDTO;
-using Kindergarten.DAL.Enum;
-using System.Security.Claims;
-using System.Text.Json;
 
 
 namespace Kindergarten.BLL.Services.IdentityServices
@@ -62,7 +56,7 @@ namespace Kindergarten.BLL.Services.IdentityServices
             var query = _context.Users
                 .Where(u => !u.IsDeleted &&
                     (string.IsNullOrEmpty(searchText) ||
-                     u.UserName.ToLower().Contains(searchText)) || 
+                     u.UserName.ToLower().Contains(searchText)) ||
                      u.Email.ToLower().Contains(searchText));
 
             if (!string.IsNullOrEmpty(filter.SortBy))

@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace Kindergarten.DAL.Entity.DRBRA
+﻿namespace Kindergarten.DAL.Entity.DRBRA
 {
     public class SidebarItem
     {

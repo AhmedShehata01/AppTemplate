@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using AutoMapper;
+﻿using AutoMapper;
 using Kindergarten.BLL.Models.ActivityLogDTO;
 using Kindergarten.DAL.Database;
 using Kindergarten.DAL.Entity;
@@ -65,7 +60,6 @@ namespace Kindergarten.BLL.Services
 
             return _mapper.Map<List<ActivityLogDTO>>(logs);
         }
-
         #endregion
 
     }

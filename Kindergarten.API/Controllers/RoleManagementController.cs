@@ -1,10 +1,10 @@
 ﻿using Kindergarten.BLL.Helper;
-using Kindergarten.BLL.Models.RoleManagementDTO;
 using Kindergarten.BLL.Models;
-using Kindergarten.BLL.Services.IdentityServices;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authorization;
+using Kindergarten.BLL.Models.RoleManagementDTO;
 using Kindergarten.BLL.Models.UserManagementDTO;
+using Kindergarten.BLL.Services.IdentityServices;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Kindergarten.API.Controllers
 {
@@ -88,7 +88,7 @@ namespace Kindergarten.API.Controllers
         {
             try
             {
-                var created = await _roleService.CreateRoleAsync(dto , CurrentUserId , CurrentUserName);
+                var created = await _roleService.CreateRoleAsync(dto, CurrentUserId, CurrentUserName);
                 return Ok(new ApiResponse<bool>
                 {
                     Code = 200,
@@ -158,7 +158,7 @@ namespace Kindergarten.API.Controllers
         {
             try
             {
-                var toggled = await _roleService.ToggleRoleStatusAsync(id , CurrentUserId , CurrentUserName);
+                var toggled = await _roleService.ToggleRoleStatusAsync(id, CurrentUserId, CurrentUserName);
                 if (!toggled)
                 {
                     return NotFound(new ApiResponse<string>
@@ -193,7 +193,7 @@ namespace Kindergarten.API.Controllers
         {
             try
             {
-                var deleted = await _roleService.DeleteRoleAsync(id, CurrentUserId , CurrentUserName);
+                var deleted = await _roleService.DeleteRoleAsync(id, CurrentUserId, CurrentUserName);
                 if (!deleted)
                 {
                     return NotFound(new ApiResponse<string>
@@ -308,7 +308,7 @@ namespace Kindergarten.API.Controllers
         {
             try
             {
-                var removed = await _roleService.RemoveUserRoleAsync(userId, roleId , CurrentUserId , CurrentUserName);
+                var removed = await _roleService.RemoveUserRoleAsync(userId, roleId, CurrentUserId, CurrentUserName);
                 if (!removed)
                 {
                     return NotFound(new ApiResponse<string>

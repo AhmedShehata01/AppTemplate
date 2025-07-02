@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Text.Json;
-using System.Threading.Tasks;
+﻿using System.Text.Json;
 using AutoMapper;
 using Kindergarten.BLL.Models;
 using Kindergarten.BLL.Models.ActivityLogDTO;
@@ -25,7 +20,7 @@ namespace Kindergarten.BLL.Services.IdentityServices
         #endregion
 
         #region Ctor
-        public RoleManagementService(ApplicationContext context, IMapper mapper , IActivityLogService activityLogService)
+        public RoleManagementService(ApplicationContext context, IMapper mapper, IActivityLogService activityLogService)
         {
             _context = context;
             _mapper = mapper;
@@ -354,7 +349,7 @@ namespace Kindergarten.BLL.Services.IdentityServices
     {
         Task<PagedResult<ApplicationRoleDTO>> GetAllPaginatedAsync(PaginationFilter filter);
         Task<ApplicationRoleDTO> GetByIdAsync(string roleId);                          // Get role by ID
-        Task<bool> CreateRoleAsync(CreateRoleDTO dto , string? userId, string? userName);   // Create a new role
+        Task<bool> CreateRoleAsync(CreateRoleDTO dto, string? userId, string? userName);   // Create a new role
         Task<bool> UpdateRoleAsync(UpdateRoleDTO dto, string? userId, string? userName);    // Update existing role
         Task<bool> ToggleRoleStatusAsync(string roleId, string? userId, string? userName);                    // Toggle active/inactive
         Task<bool> DeleteRoleAsync(string roleId, string? userId, string? userName);                          // Delete role

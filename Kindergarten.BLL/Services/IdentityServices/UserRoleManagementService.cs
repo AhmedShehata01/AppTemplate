@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Text.Json;
-using System.Threading.Tasks;
+﻿using System.Text.Json;
 using Kindergarten.BLL.Models.ActivityLogDTO;
 using Kindergarten.DAL.Database;
 using Kindergarten.DAL.Enum;
@@ -23,7 +18,7 @@ namespace Kindergarten.BLL.Services.IdentityServices
         #endregion
 
         #region Ctor
-        public UserRoleManagementService(UserManager<ApplicationUser> userManager, 
+        public UserRoleManagementService(UserManager<ApplicationUser> userManager,
                                             RoleManager<ApplicationRole> roleManager,
                                             ApplicationContext context,
                                             IActivityLogService activityLogService)
@@ -156,7 +151,7 @@ namespace Kindergarten.BLL.Services.IdentityServices
         #endregion
     }
 
-    public interface IUserRoleManagementService 
+    public interface IUserRoleManagementService
     {
         Task<List<string>> GetAllRolesAsync();                   // جلب كل أسماء الأدوار
         Task<List<string>> GetUserRolesAsync(string userId);     // جلب أدوار مستخدم معين

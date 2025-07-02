@@ -1,19 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Linq.Expressions;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Linq.Expressions;
 using AutoMapper;
 using Kindergarten.BLL.Extensions;
 using Kindergarten.BLL.Models;
 using Kindergarten.BLL.Models.ActivityLogDTO;
 using Kindergarten.BLL.Models.BranchDTO;
 using Kindergarten.BLL.Models.KindergartenDTO;
-using Kindergarten.BLL.Repository;
 using Kindergarten.DAL.Database;
 using Kindergarten.DAL.Entity;
 using Kindergarten.DAL.Enum;
+using Kindergarten.DAL.Repository;
 using Microsoft.EntityFrameworkCore;
 
 namespace Kindergarten.BLL.Services
@@ -456,7 +451,7 @@ namespace Kindergarten.BLL.Services
         Task<PagedResult<KindergartenDTO>> GetAllKgsAsync(PaginationFilter filter);
         Task<KindergartenDTO> GetKgByIdAsync(int id);
         Task<KindergartenDTO> CreateKgAsync(KindergartenCreateDTO kgDto, string userId, string userName);
-        Task<KindergartenDTO> UpdateKgAsync(KindergartenUpdateDTO dto, string userId, string userName , string? userComment);
+        Task<KindergartenDTO> UpdateKgAsync(KindergartenUpdateDTO dto, string userId, string userName, string? userComment);
         Task<bool> DeleteKgAsync(int id, string userId, string userName, string? userComment);
         //Task<bool> SoftDeleteKgAsync(int id);
         Task<bool> SoftDeleteKgWithBranchesAsync(int id, string userId, string userName, string? userComment);

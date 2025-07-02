@@ -119,7 +119,7 @@ namespace Kindergarten.API.Controllers
                     });
                 }
 
-                var success = await _userManagementService.UpdateAsync(id, updatedUser, CurrentUserId , CurrentUserName);
+                var success = await _userManagementService.UpdateAsync(id, updatedUser, CurrentUserId, CurrentUserName);
                 if (!success)
                 {
                     return NotFound(new ApiResponse<string>
@@ -154,7 +154,7 @@ namespace Kindergarten.API.Controllers
         {
             try
             {
-                var success = await _userManagementService.DeleteAsync(id, CurrentUserId ,CurrentUserName);
+                var success = await _userManagementService.DeleteAsync(id, CurrentUserId, CurrentUserName);
                 if (!success)
                 {
                     return NotFound(new ApiResponse<string>
@@ -249,7 +249,7 @@ namespace Kindergarten.API.Controllers
         {
             try
             {
-                var result = await _userRoleManagementService.AssignRolesToUserAsync(id, roles, CurrentUserId , CurrentUserName);
+                var result = await _userRoleManagementService.AssignRolesToUserAsync(id, roles, CurrentUserId, CurrentUserName);
                 if (!result)
                 {
                     return BadRequest(new ApiResponse<string>
@@ -345,7 +345,7 @@ namespace Kindergarten.API.Controllers
         {
             try
             {
-                var success = await _userClaimManagementService.AssignClaimsToUserAsync(id, claims, CurrentUserId , CurrentUserName);
+                var success = await _userClaimManagementService.AssignClaimsToUserAsync(id, claims, CurrentUserId, CurrentUserName);
                 if (!success)
                 {
                     return BadRequest(new ApiResponse<string>

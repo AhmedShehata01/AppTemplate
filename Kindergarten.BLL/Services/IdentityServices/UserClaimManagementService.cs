@@ -1,10 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Security.Claims;
-using System.Text;
+﻿using System.Security.Claims;
 using System.Text.Json;
-using System.Threading.Tasks;
 using Kindergarten.BLL.Models.ActivityLogDTO;
 using Kindergarten.BLL.Models.ClaimsDTO;
 using Kindergarten.DAL.Enum;
@@ -110,7 +105,7 @@ namespace Kindergarten.BLL.Services.IdentityServices
     {
         Task<List<ClaimDTO>> GetAllClaimsAsync(); // جلب كل الـ claims المتاحة
         Task<List<ClaimDTO>> GetUserClaimsAsync(string userId); // جلب claims المستخدم
-        Task<bool> AssignClaimsToUserAsync(string userId, List<string> claimTypes , string? performedByUserId, string? performedByUserName); // تعيين claims للمستخدم
+        Task<bool> AssignClaimsToUserAsync(string userId, List<string> claimTypes, string? performedByUserId, string? performedByUserName); // تعيين claims للمستخدم
     }
 
 }

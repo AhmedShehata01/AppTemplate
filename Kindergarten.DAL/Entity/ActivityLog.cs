@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.ComponentModel.DataAnnotations;
 using Kindergarten.DAL.Enum;
 using Kindergarten.DAL.Extend;
 
@@ -23,7 +18,7 @@ namespace Kindergarten.DAL.Entity
 
         [MaxLength(500)]
         public string? SystemComment { get; set; }              // Optional comment
-        
+
         [MaxLength(500)]
         public string? UserComment { get; set; }              // Optional comment
 

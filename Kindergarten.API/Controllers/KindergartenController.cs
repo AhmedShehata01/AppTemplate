@@ -1,14 +1,13 @@
 ﻿using System.Net;
-using System.Linq;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using Kindergarten.BLL.Helper;
+using Kindergarten.BLL.Models;
+using Kindergarten.BLL.Models.ActivityLogDTO;
 using Kindergarten.BLL.Models.KindergartenDTO;
 using Kindergarten.BLL.Services;
-using Kindergarten.BLL.Models;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
-using Kindergarten.BLL.Models.ActivityLogDTO;
 
 namespace Kindergarten.API.Controllers
 {
@@ -121,7 +120,7 @@ namespace Kindergarten.API.Controllers
 
                 var createdByUserName = User.Identity?.Name ?? "Unknown";
                 var createdByUserId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
-                var createdKg = await _kindergartenService.CreateKgAsync(dto , createdByUserId , createdByUserName);
+                var createdKg = await _kindergartenService.CreateKgAsync(dto, createdByUserId, createdByUserName);
 
                 return CreatedAtAction(nameof(GetById), new { id = createdKg.Id }, new ApiResponse<KindergartenDTO>
                 {
@@ -152,7 +151,7 @@ namespace Kindergarten.API.Controllers
 
         // PUT: api/Kindergarten/Update
         [HttpPut("Update")]
-        public async Task<IActionResult> Update([FromBody] KindergartenUpdateDTO dto , string? userComment)
+        public async Task<IActionResult> Update([FromBody] KindergartenUpdateDTO dto, string? userComment)
         {
             try
             {
@@ -285,7 +284,7 @@ namespace Kindergarten.API.Controllers
 
         // PUT: api/Kindergarten/SoftDelete/5
         [HttpPut("SoftDelete/{id}")]
-        public async Task<IActionResult> SoftDelete(int id , string? userComment)
+        public async Task<IActionResult> SoftDelete(int id, string? userComment)
         {
             try
             {

@@ -1,20 +1,16 @@
-﻿
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using System.Text;
 using Kindergarten.BLL.Helper;
 using Kindergarten.BLL.Mapper;
 using Kindergarten.BLL.Middleware;
-using Kindergarten.BLL.Repository;
 using Kindergarten.BLL.Services;
 using Kindergarten.BLL.Services.AppSecurity;
 using Kindergarten.BLL.Services.IdentityServices;
 using Kindergarten.BLL.Services.SendEmail;
 using Kindergarten.DAL.Database;
 using Kindergarten.DAL.Extend;
+using Kindergarten.DAL.Repository;
 using Kindergarten.DAL.StaticData;
-using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;

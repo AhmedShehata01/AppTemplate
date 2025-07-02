@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Kindergarten.DAL.Extend;
+﻿using Kindergarten.DAL.Extend;
 
 namespace Kindergarten.DAL.Entity.DRBRA
 {

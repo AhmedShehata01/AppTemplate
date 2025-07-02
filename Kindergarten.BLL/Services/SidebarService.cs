@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using AutoMapper;
+﻿using AutoMapper;
 using Kindergarten.BLL.Models;
 using Kindergarten.BLL.Models.ActivityLogDTO;
 using Kindergarten.BLL.Models.DRBRADTO;
@@ -43,7 +38,7 @@ namespace Kindergarten.BLL.Services
             if (!string.IsNullOrWhiteSpace(filter.SearchText))
             {
                 var search = filter.SearchText.Trim().ToLower();
-                query = query.Where(x => 
+                query = query.Where(x =>
                         x.LabelAr.ToLower().Contains(search) ||
                         x.LabelEn.ToLower().Contains(search));
             }
