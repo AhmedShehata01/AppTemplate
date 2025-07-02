@@ -11,10 +11,13 @@ using Kindergarten.DAL.Database;
 using Kindergarten.DAL.Enum;
 using Kindergarten.DAL.Extend;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+
 
 namespace Kindergarten.BLL.Services
 {
@@ -26,6 +29,8 @@ namespace Kindergarten.BLL.Services
         private readonly ApplicationContext _context;
         private readonly IActivityLogService _activityLogService;
         private readonly IEmailService _emailService;
+        private readonly IMemoryCache _cache;
+        private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly ILogger<AuthService> _logger;
         private readonly string _googleClientId;
         private readonly string _facebookAppId;
@@ -39,6 +44,8 @@ namespace Kindergarten.BLL.Services
             ApplicationContext context,
             IActivityLogService activityLogService,
             IEmailService emailService,
+            IMemoryCache cache,
+            IHttpContextAccessor httpContextAccessor,
             ILogger<AuthService> logger)
         {
             _userManager = userManager;
@@ -46,6 +53,8 @@ namespace Kindergarten.BLL.Services
             _context = context;
             _activityLogService = activityLogService;
             _emailService = emailService;
+            _cache = cache;
+            _httpContextAccessor = httpContextAccessor;
             _logger = logger;
             _googleClientId = _config["Google:ClientId"];
             _facebookAppId = _config["Facebook:AppId"];
@@ -88,12 +97,148 @@ namespace Kindergarten.BLL.Services
 
         public async Task<string> LoginAsync(LoginDTO model)
         {
+            var ipAddress = _httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString();
+
+            // مفتاح فريد لكل يوزر بناءً على الإيميل + IP
+            var cacheKey = $"login-attempts-{model.Email.ToLower()}-{ipAddress}";
+
+            // مفتاح تراكينج لمحاولات الـ IP على إيميلات مختلفة
+            var ipKey = $"ip-login-attempts-{ipAddress}";
+            var ipAlertedKey = $"{ipKey}-alerted";
+
+            // اقرأ المحاولات الحالية (أو صفر لو مش موجود)
+            var attempts = _cache.Get<int>(cacheKey);
+            var ipAttempts = _cache.Get<int>(ipKey);
+            var alreadyAlerted = _cache.Get<bool>(ipAlertedKey);
+
+            // لو عدى حد المحاولات المسموح بيها للمستخدم
+            if (attempts >= 5)
+            {
+                _logger.LogWarning(
+                    "User {Email} attempted to login {Count} times in the last 5 minutes.",
+                    model.Email,
+                    attempts
+                );
+
+                throw new UnauthorizedAccessException("Too many login attempts. Please try again later.");
+            }
+
+            // حاول تلاقي اليوزر
             var user = await _userManager.FindByEmailAsync(model.Email);
 
+            // لو مش لاقيه أو الباسورد غلط
             if (user == null || !await _userManager.CheckPasswordAsync(user, model.Password))
             {
+                // زوّد عدد المحاولات للمستخدم
+                var newAttempts = attempts + 1;
+                _cache.Set(cacheKey, newAttempts, TimeSpan.FromMinutes(5));
+
+                // زوّد عدد محاولات الـ IP
+                var newIpAttempts = ipAttempts + 1;
+                _cache.Set(ipKey, newIpAttempts, TimeSpan.FromMinutes(5));
+
+                _logger.LogInformation(
+                    "Failed login attempt {Count} for user {Email} from IP {IP}.",
+                    newAttempts,
+                    model.Email,
+                    ipAddress
+                );
+
+                // لو IP حاول أكتر من 10 مرات → ابعت إيميل تنبيه
+                if (!alreadyAlerted && newIpAttempts >= 10)
+                {
+                    _logger.LogWarning(
+                        "🚨 IP {IP} attempted to login on multiple emails {Count} times in the last 5 minutes.",
+                        ipAddress,
+                        newIpAttempts
+                    );
+                    // هات إيميل الأدمن من الكونفيج
+                    var adminEmail = _config["AdminSettings:NotificationEmail"];
+
+                    var emailBody = $@"
+                        <!DOCTYPE html>
+                        <html lang=""ar"">
+                        <head>
+                            <meta charset=""UTF-8"">
+                            <style>
+                                body {{
+                                    font-family: Tahoma, Arial, sans-serif;
+                                    background-color: #f9f9f9;
+                                    color: #333;
+                                    padding: 20px;
+                                    direction: rtl;
+                                }}
+                                .container {{
+                                    background-color: #fff;
+                                    border-radius: 8px;
+                                    padding: 25px;
+                                    max-width: 600px;
+                                    margin: auto;
+                                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                                }}
+                                .title {{
+                                    font-size: 20px;
+                                    font-weight: bold;
+                                    color: #d9534f;
+                                    margin-bottom: 15px;
+                                    text-align: center;
+                                }}
+                                .details {{
+                                    font-size: 15px;
+                                    line-height: 1.7;
+                                }}
+                                .highlight {{
+                                    background-color: #f2f2f2;
+                                    padding: 8px;
+                                    border-radius: 5px;
+                                    display: inline-block;
+                                    margin-top: 10px;
+                                    font-weight: bold;
+                                }}
+                                .footer {{
+                                    margin-top: 25px;
+                                    font-size: 13px;
+                                    color: #888;
+                                    text-align: center;
+                                }}
+                            </style>
+                        </head>
+                        <body>
+                            <div class=""container"">
+                                <div class=""title"">
+                                    🚨 تحذير أمني من نظام الحضانة
+                                </div>
+                                <div class=""details"">
+                                    <p>عنوان IP التالي حاول تسجيل الدخول عدة مرات على حسابات مختلفة:</p>
+                                    <div class=""highlight"">{ipAddress}</div>
+
+                                    <p>عدد المحاولات:</p>
+                                    <div class=""highlight"">{newIpAttempts}</div>
+
+                                    <p>حدثت هذه المحاولات خلال آخر 5 دقائق. يرجى التحقق إذا كانت هذه المحاولات طبيعية أو تمثل تهديدًا أمنيًا.</p>
+                                </div>
+                                <div class=""footer"">
+                                    هذا البريد تم إرساله تلقائيًا من نظام إدارة الحضانة.
+                                </div>
+                            </div>
+                        </body>
+                        </html>";
+
+                    await _emailService.SendEmailAsync(
+                        adminEmail,
+                        "تحذير أمني: محاولات تسجيل دخول مريبة",
+                        emailBody
+                    );
+
+                    // علّم إننا بعثنا التنبيه بالفعل
+                    _cache.Set(ipAlertedKey, true, TimeSpan.FromMinutes(10));
+                }
+
                 throw new UnauthorizedAccessException("Invalid credentials");
             }
+
+            // لو نجح اللوجين → امسح المحاولات من الكاش
+            _cache.Remove(cacheKey);
 
             var roles = await _userManager.GetRolesAsync(user);
             var jwtToken = await GenerateJwtTokenAsync(user, roles);
@@ -110,6 +255,8 @@ namespace Kindergarten.BLL.Services
 
             return jwtToken;
         }
+
+
 
         public async Task<string> ChangePasswordAsync(string userId, ChangePasswordDTO model)
         {
@@ -179,10 +326,125 @@ namespace Kindergarten.BLL.Services
 
         public async Task<string> ForgotPasswordAsync(ForgotPasswordDto model)
         {
+            var ipAddress = _httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString();
+
+            // مفتاح تتبع محاولات نسيت كلمة المرور للبريد + IP
+            var cacheKey = $"forgot-password-attempts-{model.Email.ToLower()}-{ipAddress}";
+
+            // مفتاح علم إرسال التنبيه
+            var alertSentKey = $"{cacheKey}-alerted";
+
+            var attempts = _cache.Get<int>(cacheKey);
+            var alertSent = _cache.Get<bool>(alertSentKey);
+
+            // لو IP حاول أكتر من 5 مرات → ابعت إيميل تنبيه
+            if (attempts >= 5)
+            {
+                // يمكن تحذير المستخدم برفق أو إعطاء رسالة عامة
+                return "لقد تجاوزت الحد المسموح به لطلبات إعادة تعيين كلمة المرور، الرجاء المحاولة بعد قليل.";
+            }
+
+            // زوّد عدد المحاولات
+            attempts++;
+            _cache.Set(cacheKey, attempts, TimeSpan.FromMinutes(5));
+
+            // لو عدد المحاولات تجاوز 5 و التنبيه مش مرسل
+            if (attempts >= 5 && !alertSent)
+            {
+                _logger.LogWarning(
+                    "🚨 تم تنفيذ طلبات نسيت كلمة المرور أكثر من 5 مرات على البريد {Email} من IP {IP} خلال 5 دقائق.",
+                    model.Email,
+                    ipAddress
+                );
+
+                var adminEmail = _config["AdminSettings:NotificationEmail"];
+
+                var adminEmailBody = $@"
+                                <!DOCTYPE html>
+                                <html lang=""ar"">
+                                <head>
+                                    <meta charset=""UTF-8"">
+                                    <style>
+                                        body {{
+                                            font-family: Tahoma, Arial, sans-serif;
+                                            background-color: #f9f9f9;
+                                            color: #333;
+                                            padding: 20px;
+                                            direction: rtl;
+                                        }}
+                                        .container {{
+                                            background-color: #fff;
+                                            border-radius: 8px;
+                                            padding: 25px;
+                                            max-width: 600px;
+                                            margin: auto;
+                                            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                                        }}
+                                        .title {{
+                                            font-size: 20px;
+                                            font-weight: bold;
+                                            color: #d9534f;
+                                            margin-bottom: 15px;
+                                            text-align: center;
+                                        }}
+                                        .details {{
+                                            font-size: 15px;
+                                            line-height: 1.7;
+                                        }}
+                                        .highlight {{
+                                            background-color: #f2f2f2;
+                                            padding: 8px;
+                                            border-radius: 5px;
+                                            display: inline-block;
+                                            margin-top: 10px;
+                                            font-weight: bold;
+                                        }}
+                                        .footer {{
+                                            margin-top: 25px;
+                                            font-size: 13px;
+                                            color: #888;
+                                            text-align: center;
+                                        }}
+                                    </style>
+                                </head>
+                                <body>
+                                    <div class=""container"">
+                                        <div class=""title"">
+                                            🚨 تحذير أمني من نظام الحضانة
+                                        </div>
+                                        <div class=""details"">
+                                            <p>تم تنفيذ أكثر من <strong>5 محاولات نسيت كلمة المرور</strong> على البريد الإلكتروني التالي من عنوان IP:</p>
+                                            <div class=""highlight"">{model.Email}</div>
+
+                                            <p>عنوان IP:</p>
+                                            <div class=""highlight"">{ipAddress}</div>
+
+                                            <p>عدد المحاولات خلال آخر 5 دقائق:</p>
+                                            <div class=""highlight"">{attempts}</div>
+
+                                            <p>يرجى التحقق من هذا النشاط لأنه قد يكون محاولة اختراق.</p>
+                                        </div>
+                                        <div class=""footer"">
+                                            هذا البريد تم إرساله تلقائيًا من نظام إدارة الحضانة.
+                                        </div>
+                                    </div>
+                                </body>
+                                </html>";
+
+
+                await _emailService.SendEmailAsync(
+                    adminEmail,
+                    "تحذير أمني: محاولات نسيت كلمة المرور مريبة",
+                    adminEmailBody);
+
+                // علم أنه تم إرسال التنبيه حتى لا يرسل أكثر من مرة
+                _cache.Set(alertSentKey, true, TimeSpan.FromMinutes(10));
+            }
+
             var user = await _userManager.FindByEmailAsync(model.Email);
             if (user == null)
             {
-                // هنا مش هنرمي Exception لأننا دايمًا بنرجع نفس الرسالة
+                // نرجع نفس الرسالة بدون كشف معلومات
                 return "إذا كان البريد الإلكتروني مسجلاً، سيتم إرسال كلمة مرور جديدة إليه.";
             }
 
@@ -200,88 +462,88 @@ namespace Kindergarten.BLL.Services
             await _userManager.UpdateAsync(user);
 
             var emailBody = $@"
-                <!DOCTYPE html>
-                <html lang=""ar"">
-                <head>
-                    <meta charset=""UTF-8"">
-                    <style>
-                        body {{
-                            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                            background-color: #f7f7f7;
-                            color: #333;
-                            direction: rtl;
-                            padding: 20px;
-                        }}
-                        .container {{
-                            background-color: #ffffff;
-                            border-radius: 8px;
-                            padding: 30px;
-                            max-width: 600px;
-                            margin: auto;
-                            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-                        }}
-                        .title {{
-                            color: #2d89ef;
-                            font-size: 24px;
-                            margin-bottom: 20px;
-                            text-align: center;
-                        }}
-                        .info {{
-                            font-size: 16px;
-                            line-height: 1.8;
-                            margin-bottom: 25px;
-                        }}
-                        .highlight {{
-                            background-color: #f0f0f0;
-                            padding: 10px;
-                            border-radius: 5px;
-                            font-family: monospace;
-                            margin-bottom: 20px;
-                        }}
-                        .btn {{
-                            display: inline-block;
-                            background-color: #2d89ef;
-                            color: white;
-                            padding: 12px 24px;
-                            border-radius: 6px;
-                            text-decoration: none;
-                            font-weight: bold;
-                        }}
-                        .footer {{
-                            margin-top: 30px;
-                            font-size: 14px;
-                            color: #888;
-                            text-align: center;
-                        }}
-                    </style>
-                </head>
-                <body>
-                    <div class=""container"">
-                        <div class=""title"">مرحباً {user.Email} 👋</div>
+                        <!DOCTYPE html>
+                        <html lang=""ar"">
+                        <head>
+                            <meta charset=""UTF-8"">
+                            <style>
+                                body {{
+                                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                                    background-color: #f7f7f7;
+                                    color: #333;
+                                    direction: rtl;
+                                    padding: 20px;
+                                }}
+                                .container {{
+                                    background-color: #ffffff;
+                                    border-radius: 8px;
+                                    padding: 30px;
+                                    max-width: 600px;
+                                    margin: auto;
+                                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+                                }}
+                                .title {{
+                                    color: #2d89ef;
+                                    font-size: 24px;
+                                    margin-bottom: 20px;
+                                    text-align: center;
+                                }}
+                                .info {{
+                                    font-size: 16px;
+                                    line-height: 1.8;
+                                    margin-bottom: 25px;
+                                }}
+                                .highlight {{
+                                    background-color: #f0f0f0;
+                                    padding: 10px;
+                                    border-radius: 5px;
+                                    font-family: monospace;
+                                    margin-bottom: 20px;
+                                }}
+                                .btn {{
+                                    display: inline-block;
+                                    background-color: #2d89ef;
+                                    color: white;
+                                    padding: 12px 24px;
+                                    border-radius: 6px;
+                                    text-decoration: none;
+                                    font-weight: bold;
+                                }}
+                                .footer {{
+                                    margin-top: 30px;
+                                    font-size: 14px;
+                                    color: #888;
+                                    text-align: center;
+                                }}
+                            </style>
+                        </head>
+                        <body>
+                            <div class=""container"">
+                                <div class=""title"">مرحباً {user.Email} 👋</div>
 
-                        <div class=""info"">
-                            تم إعادة تعيين كلمة المرور الخاصة بك بنجاح. يمكنك الآن تسجيل الدخول باستخدام البيانات التالية:
-                        </div>
+                                <div class=""info"">
+                                    تم إعادة تعيين كلمة المرور الخاصة بك بنجاح. يمكنك الآن تسجيل الدخول باستخدام البيانات التالية:
+                                </div>
 
-                        <div class=""highlight"">
-                            <div><strong>البريد الإلكتروني:</strong> {user.Email}</div>
-                            <div><strong>كلمة المرور الجديدة:</strong> {newPassword}</div>
-                        </div>
+                                <div class=""highlight"">
+                                    <div><strong>البريد الإلكتروني:</strong> {user.Email}</div>
+                                    <div><strong>كلمة المرور الجديدة:</strong> {newPassword}</div>
+                                </div>
 
-                        <div style=""text-align: center; margin-bottom: 20px;"">
-                            <a href=""{model.LoginUrl}"" class=""btn"">تسجيل الدخول الآن</a>
-                        </div>
+                                <div style=""text-align: center; margin-bottom: 20px;"">
+                                    <a href=""{model.LoginUrl}"" class=""btn"">تسجيل الدخول الآن</a>
+                                </div>
 
-                        <div class=""info"">
-                            تأكد من تغيير كلمة المرور بعد الدخول حفاظاً على أمان حسابك.
-                        </div>
+                                <div class=""info"">
+                                    تأكد من تغيير كلمة المرور بعد الدخول حفاظاً على أمان حسابك.
+                                </div>
 
-                        <div class=""footer"">
-                            هذا البريد تم إرساله تلقائيًا من نظام إدارة الحضانة.
-                        </div>
-                    </div>
-                </body>
-                </html>";
+                                <div class=""footer"">
+                                    هذا البريد تم إرساله تلقائيًا من نظام إدارة الحضانة.
+                                </div>
+                            </div>
+                        </body>
+                        </html>";
 
             await _emailService.SendEmailAsync(
                 user.Email,
@@ -290,6 +552,7 @@ namespace Kindergarten.BLL.Services
 
             return "تم إرسال كلمة مرور جديدة إلى بريدك الإلكتروني.";
         }
+
 
         public async Task<string> GenerateJwtTokenAsync(ApplicationUser user, IList<string> roles)
         {
