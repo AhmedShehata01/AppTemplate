@@ -27,9 +27,9 @@ namespace Kindergarten.DAL.StaticData
                 }
             }
 
-            var adminEmail = "SupAdmin@gmail.com";
-            var adminUserName = "SupAdmin";  // Valid username containing only letters/digits
-            var adminPassword = "Abc@1234";
+            var adminEmail = "a.shehata.code@gmail.com";
+            var adminUserName = "SupAdmin";  // أو غيره حسب رغبتك
+            var adminPassword = "Abc@1234";  // خلي بالك تستخدم باسورد قوي وآمن
             var adminUser = await userManager.FindByEmailAsync(adminEmail);
 
             if (adminUser == null)
@@ -40,7 +40,6 @@ namespace Kindergarten.DAL.StaticData
                     Email = adminEmail,
                     NormalizedUserName = adminUserName.ToUpper(),
                     EmailConfirmed = true,
-                    // UserType = UserType.SuperAdmin,
                 };
 
                 var result = await userManager.CreateAsync(adminUser, adminPassword);
@@ -52,14 +51,14 @@ namespace Kindergarten.DAL.StaticData
                     {
                         throw new InvalidOperationException($"Failed to add role to admin user: {string.Join(", ", roleResult.Errors.Select(e => e.Description))}");
                     }
-                    // Adding claims to the Super Admin user
+                    // إضافة الصلاحيات (Claims)
                     var claims = new List<Claim>
-                    {
-                        new Claim("View Role", "true"),
-                        new Claim("Create Role", "true"),
-                        new Claim("Edit Role", "true"),
-                        new Claim("Delete Role", "true")
-                    };
+                        {
+                            new Claim("View Role", "true"),
+                            new Claim("Create Role", "true"),
+                            new Claim("Edit Role", "true"),
+                            new Claim("Delete Role", "true")
+                        };
 
                     foreach (var claim in claims)
                     {
@@ -75,7 +74,6 @@ namespace Kindergarten.DAL.StaticData
                     throw new InvalidOperationException($"Failed to create admin user: {string.Join(", ", result.Errors.Select(e => e.Description))}");
                 }
             }
-
             #endregion
         }
     }

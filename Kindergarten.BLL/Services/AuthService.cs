@@ -32,6 +32,7 @@ namespace Kindergarten.BLL.Services
         private readonly IMemoryCache _cache;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly ILogger<AuthService> _logger;
+        private readonly IOtpService _otpService;
         private readonly string _googleClientId;
         private readonly string _facebookAppId;
         private readonly string _facebookAppSecret;
@@ -46,7 +47,8 @@ namespace Kindergarten.BLL.Services
             IEmailService emailService,
             IMemoryCache cache,
             IHttpContextAccessor httpContextAccessor,
-            ILogger<AuthService> logger)
+            ILogger<AuthService> logger,
+            IOtpService otpService)
         {
             _userManager = userManager;
             _config = config;
@@ -56,6 +58,7 @@ namespace Kindergarten.BLL.Services
             _cache = cache;
             _httpContextAccessor = httpContextAccessor;
             _logger = logger;
+            _otpService = otpService;
             _googleClientId = _config["Google:ClientId"];
             _facebookAppId = _config["Facebook:AppId"];
             _facebookAppSecret = _config["Facebook:AppSecret"];
@@ -95,6 +98,170 @@ namespace Kindergarten.BLL.Services
             return "User registered successfully";
         }
 
+        #region Old Login
+        //public async Task<string> LoginAsync(LoginDTO model)
+        //{
+        //    var ipAddress = _httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString();
+
+        //    // مفتاح فريد لكل يوزر بناءً على الإيميل + IP
+        //    var cacheKey = $"login-attempts-{model.Email.ToLower()}-{ipAddress}";
+
+        //    // مفتاح تراكينج لمحاولات الـ IP على إيميلات مختلفة
+        //    var ipKey = $"ip-login-attempts-{ipAddress}";
+        //    var ipAlertedKey = $"{ipKey}-alerted";
+
+        //    // اقرأ المحاولات الحالية (أو صفر لو مش موجود)
+        //    var attempts = _cache.Get<int>(cacheKey);
+        //    var ipAttempts = _cache.Get<int>(ipKey);
+        //    var alreadyAlerted = _cache.Get<bool>(ipAlertedKey);
+
+        //    // لو عدى حد المحاولات المسموح بيها للمستخدم
+        //    if (attempts >= 5)
+        //    {
+        //        _logger.LogWarning(
+        //            "User {Email} attempted to login {Count} times in the last 5 minutes.",
+        //            model.Email,
+        //            attempts
+        //        );
+
+        //        throw new UnauthorizedAccessException("Too many login attempts. Please try again later.");
+        //    }
+
+        //    // حاول تلاقي اليوزر
+        //    var user = await _userManager.FindByEmailAsync(model.Email);
+
+        //    // لو مش لاقيه أو الباسورد غلط
+        //    if (user == null || !await _userManager.CheckPasswordAsync(user, model.Password))
+        //    {
+        //        // زوّد عدد المحاولات للمستخدم
+        //        var newAttempts = attempts + 1;
+        //        _cache.Set(cacheKey, newAttempts, TimeSpan.FromMinutes(5));
+
+        //        // زوّد عدد محاولات الـ IP
+        //        var newIpAttempts = ipAttempts + 1;
+        //        _cache.Set(ipKey, newIpAttempts, TimeSpan.FromMinutes(5));
+
+        //        _logger.LogInformation(
+        //            "Failed login attempt {Count} for user {Email} from IP {IP}.",
+        //            newAttempts,
+        //            model.Email,
+        //            ipAddress
+        //        );
+
+        //        // لو IP حاول أكتر من 10 مرات → ابعت إيميل تنبيه
+        //        if (!alreadyAlerted && newIpAttempts >= 10)
+        //        {
+        //            _logger.LogWarning(
+        //                "🚨 IP {IP} attempted to login on multiple emails {Count} times in the last 5 minutes.",
+        //                ipAddress,
+        //                newIpAttempts
+        //            );
+        //            // هات إيميل الأدمن من الكونفيج
+        //            var adminEmail = _config["AdminSettings:NotificationEmail"];
+
+        //            var emailBody = $@"
+        //                <!DOCTYPE html>
+        //                <html lang=""ar"">
+        //                <head>
+        //                    <meta charset=""UTF-8"">
+        //                    <style>
+        //                        body {{
+        //                            font-family: Tahoma, Arial, sans-serif;
+        //                            background-color: #f9f9f9;
+        //                            color: #333;
+        //                            padding: 20px;
+        //                            direction: rtl;
+        //                        }}
+        //                        .container {{
+        //                            background-color: #fff;
+        //                            border-radius: 8px;
+        //                            padding: 25px;
+        //                            max-width: 600px;
+        //                            margin: auto;
+        //                            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        //                        }}
+        //                        .title {{
+        //                            font-size: 20px;
+        //                            font-weight: bold;
+        //                            color: #d9534f;
+        //                            margin-bottom: 15px;
+        //                            text-align: center;
+        //                        }}
+        //                        .details {{
+        //                            font-size: 15px;
+        //                            line-height: 1.7;
+        //                        }}
+        //                        .highlight {{
+        //                            background-color: #f2f2f2;
+        //                            padding: 8px;
+        //                            border-radius: 5px;
+        //                            display: inline-block;
+        //                            margin-top: 10px;
+        //                            font-weight: bold;
+        //                        }}
+        //                        .footer {{
+        //                            margin-top: 25px;
+        //                            font-size: 13px;
+        //                            color: #888;
+        //                            text-align: center;
+        //                        }}
+        //                    </style>
+        //                </head>
+        //                <body>
+        //                    <div class=""container"">
+        //                        <div class=""title"">
+        //                            🚨 تحذير أمني من نظام الحضانة
+        //                        </div>
+        //                        <div class=""details"">
+        //                            <p>عنوان IP التالي حاول تسجيل الدخول عدة مرات على حسابات مختلفة:</p>
+        //                            <div class=""highlight"">{ipAddress}</div>
+
+        //                            <p>عدد المحاولات:</p>
+        //                            <div class=""highlight"">{newIpAttempts}</div>
+
+        //                            <p>حدثت هذه المحاولات خلال آخر 5 دقائق. يرجى التحقق إذا كانت هذه المحاولات طبيعية أو تمثل تهديدًا أمنيًا.</p>
+        //                        </div>
+        //                        <div class=""footer"">
+        //                            هذا البريد تم إرساله تلقائيًا من نظام إدارة الحضانة.
+        //                        </div>
+        //                    </div>
+        //                </body>
+        //                </html>";
+
+        //            await _emailService.SendEmailAsync(
+        //                adminEmail,
+        //                "تحذير أمني: محاولات تسجيل دخول مريبة",
+        //                emailBody
+        //            );
+
+        //            // علّم إننا بعثنا التنبيه بالفعل
+        //            _cache.Set(ipAlertedKey, true, TimeSpan.FromMinutes(10));
+        //        }
+
+        //        throw new UnauthorizedAccessException("Invalid credentials");
+        //    }
+
+        //    // لو نجح اللوجين → امسح المحاولات من الكاش
+        //    _cache.Remove(cacheKey);
+
+        //    var roles = await _userManager.GetRolesAsync(user);
+        //    var jwtToken = await GenerateJwtTokenAsync(user, roles);
+
+        //    await _activityLogService.CreateAsync(new ActivityLogCreateDTO
+        //    {
+        //        EntityName = nameof(ApplicationUser),
+        //        EntityId = user.Id,
+        //        ActionType = ActivityActionType.Login,
+        //        SystemComment = $"User '{user.UserName}' logged in successfully.",
+        //        PerformedByUserId = user.Id,
+        //        PerformedByUserName = user.UserName
+        //    });
+
+        //    return jwtToken;
+        //}
+        #endregion
+
+        #region Login With Otp
         public async Task<string> LoginAsync(LoginDTO model)
         {
             var ipAddress = _httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString();
@@ -240,22 +407,82 @@ namespace Kindergarten.BLL.Services
             // لو نجح اللوجين → امسح المحاولات من الكاش
             _cache.Remove(cacheKey);
 
+            // تخزين جلسة تحقق الباسورد للسماح بالتحقق من OTP خلال 5 دقائق فقط
+            string loginSessionKey = $"login-session-{user.Id}";
+            _cache.Set(loginSessionKey, true, TimeSpan.FromMinutes(5));
+
+            // توليد وإرسال OTP للمستخدم
+            var otpResult = await _otpService.GenerateAndSendOtpAsync(
+                new RequestOtpDTO
+                {
+                    Email = user.Email,
+                    Purpose = OtpPurpose.Login
+                });
+
+            if (!otpResult.Success)
+            {
+                // إذا فشل توليد أو إرسال OTP، ارجع رسالة خطأ مناسبة
+                throw new Exception(otpResult.Message);
+            }
+
+            // بدل ما نرجع التوكن، نرجع رسالة توضح ان OTP مطلوب
+            return "OTP_REQUIRED";
+        }
+
+        public async Task<string> VerifyOtpAndGenerateTokenAsync(VerifyOtpDTO otpDto)
+        {
+            // 1. Find user by email
+            var user = await _userManager.FindByEmailAsync(otpDto.Email);
+            if (user == null)
+                throw new UnauthorizedAccessException("User not found");
+
+            // 2. Check if there is a valid login session (password was entered recently)
+            string loginSessionKey = $"login-session-{user.Id}";
+            var sessionExists = _cache.Get<bool>(loginSessionKey);
+            if (!sessionExists)
+                throw new UnauthorizedAccessException("You must login first and enter your password.");
+
+            // 3. Verify the OTP code using the OTP service
+            var verifyResult = await _otpService.VerifyOtpAsync(
+                new VerifyOtpDTO { Email = otpDto.Email, Code = otpDto.Code }
+            );
+            if (!verifyResult.Success)
+                throw new UnauthorizedAccessException(verifyResult.Message);
+
+            // 4. OTP is valid, so remove the login session cache
+            _cache.Remove(loginSessionKey);
+
+            // 5. Clear login attempts cache for this user and their IP to reset failed login count
+            var ipAddress = _httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString();
+            string userAttemptsKey = $"login-attempts-{user.Email.ToLower()}-{ipAddress}";
+            string ipAttemptsKey = $"ip-login-attempts-{ipAddress}";
+
+            _cache.Remove(userAttemptsKey);
+            _cache.Remove(ipAttemptsKey);
+
+            // 6. Generate JWT token with user roles
             var roles = await _userManager.GetRolesAsync(user);
             var jwtToken = await GenerateJwtTokenAsync(user, roles);
 
+            // 7. Log the successful login activity
             await _activityLogService.CreateAsync(new ActivityLogCreateDTO
             {
                 EntityName = nameof(ApplicationUser),
                 EntityId = user.Id,
                 ActionType = ActivityActionType.Login,
-                SystemComment = $"User '{user.UserName}' logged in successfully.",
+                SystemComment = $"User '{user.UserName}' logged in using OTP successfully.",
                 PerformedByUserId = user.Id,
                 PerformedByUserName = user.UserName
             });
 
+            // 8. Return the JWT token to caller
             return jwtToken;
         }
 
+
+
+
+        #endregion
 
 
         public async Task<string> ChangePasswordAsync(string userId, ChangePasswordDTO model)
@@ -731,6 +958,7 @@ namespace Kindergarten.BLL.Services
 
         Task<string> RegisterAsync(RegisterDTO model);
         Task<string> LoginAsync(LoginDTO model);
+        Task<string> VerifyOtpAndGenerateTokenAsync(VerifyOtpDTO otpDto);
         Task<string> ChangePasswordAsync(string userId, ChangePasswordDTO model);
         Task<string> ForgotPasswordAsync(ForgotPasswordDto model);
         Task<string> GenerateJwtTokenAsync(ApplicationUser user, IList<string> roles);

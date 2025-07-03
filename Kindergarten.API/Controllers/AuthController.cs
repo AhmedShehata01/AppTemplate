@@ -57,8 +57,81 @@ namespace Kindergarten.API.Controllers
             });
         }
 
+        #region Old Login
+        //[HttpPost("login")]
+        //public async Task<IActionResult> Login([FromBody] LoginDTO model)
+        //{
+        //    if (!ModelState.IsValid)
+        //    {
+        //        return BadRequest(new ApiResponse<object>
+        //        {
+        //            Code = 400,
+        //            Status = "InvalidModel",
+        //            Result = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList()
+        //        });
+        //    }
+
+        //    var token = await _authService.LoginAsync(model);
+
+        //    return Ok(new ApiResponse<string>
+        //    {
+        //        Code = 200,
+        //        Status = "Success",
+        //        Result = token
+        //    });
+        //}
+        #endregion
+
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginDTO model)
+        {
+            // ✅ أول حاجة: نتأكد الـ Model اللي جاي صح
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new ApiResponse<object>
+                {
+                    Code = 400,
+                    Status = "InvalidModel",
+                    Result = ModelState.Values
+                                .SelectMany(v => v.Errors)
+                                .Select(e => e.ErrorMessage)
+                                .ToList()
+                });
+            }
+
+            // ✅ ننادي خدمة تسجيل الدخول اللي بتنفذ خطوات:
+            // - التحقق من الإيميل والباسورد
+            // - لو صح → بيولّد Session للـ OTP
+            // - ويبعت OTP للمستخدم
+            // - أو بيرجع JWT مباشرة لو مش مطلوب OTP
+            var result = await _authService.LoginAsync(model);
+
+            // ✅ لو النتيجة قالت إن OTP مطلوب
+            if (result == "OTP_REQUIRED")
+            {
+                return Ok(new ApiResponse<object>
+                {
+                    Code = 200,
+                    Status = "OtpRequired",
+                    Result = new
+                    {
+                        Message = "Please enter the OTP sent to your registered contact.",
+                        Email = model.Email
+                    }
+                });
+            }
+
+            // ✅ لو لأ → معناها إن الـ Login رجع JWT Token
+            return Ok(new ApiResponse<string>
+            {
+                Code = 200,
+                Status = "Success",
+                Result = result
+            });
+        }
+
+        [HttpPost("verify-otp")]
+        public async Task<IActionResult> VerifyOtp([FromBody] VerifyOtpDTO otpDto)
         {
             if (!ModelState.IsValid)
             {
@@ -66,11 +139,15 @@ namespace Kindergarten.API.Controllers
                 {
                     Code = 400,
                     Status = "InvalidModel",
-                    Result = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList()
+                    Result = ModelState.Values
+                              .SelectMany(v => v.Errors)
+                              .Select(e => e.ErrorMessage)
+                              .ToList()
                 });
             }
 
-            var token = await _authService.LoginAsync(model);
+            // ✅ ننادي الخدمة اللي بتتحقق من الـ OTP وترجع الـ JWT
+            var token = await _authService.VerifyOtpAndGenerateTokenAsync(otpDto);
 
             return Ok(new ApiResponse<string>
             {
@@ -79,6 +156,8 @@ namespace Kindergarten.API.Controllers
                 Result = token
             });
         }
+
+
 
         #endregion
 

@@ -64,22 +64,48 @@ namespace Kindergarten.BLL.Services
                     throw new InvalidOperationException("لا يمكن تعديل الملف الشخصي إلا إذا كان مرفوضًا.");
                 }
 
+                var oldValues = JsonSerializer.Serialize(existingProfile);
+
                 // تعديل الملف المرفوض
                 _mapper.Map(dto, existingProfile);
                 existingProfile.Status = UserStatus.pendingApproval;
                 existingProfile.SubmittedAt = DateTime.UtcNow;
 
                 _db.UserBasicProfiles.Update(existingProfile);
+
+                var newValues = JsonSerializer.Serialize(existingProfile);
+
+                await _activityLogService.CreateAsync(new ActivityLogCreateDTO
+                {
+                    EntityName = "UserBasicProfile",
+                    EntityId = existingProfile.UserId,
+                    ActionType = ActivityActionType.Updated,
+                    SystemComment = "تعديل ملف مرفوض وإرساله للمراجعة",
+                    PerformedByUserId = userId,
+                    OldValues = oldValues,
+                    NewValues = newValues,
+                });
             }
             else
             {
-                // إنشاء ملف جديد
                 var profile = _mapper.Map<UserBasicProfile>(dto);
                 profile.UserId = userId;
                 profile.Status = UserStatus.pendingApproval;
                 profile.SubmittedAt = DateTime.UtcNow;
 
                 await _db.UserBasicProfiles.AddAsync(profile);
+
+                var newValues = JsonSerializer.Serialize(profile);
+
+                await _activityLogService.CreateAsync(new ActivityLogCreateDTO
+                {
+                    EntityName = "UserBasicProfile",
+                    EntityId = profile.UserId,
+                    ActionType = ActivityActionType.Created,
+                    SystemComment = "إنشاء ملف شخصي جديد وإرساله للمراجعة",
+                    PerformedByUserId = userId,
+                    NewValues = newValues,
+                });
             }
 
             var result = await _db.SaveChangesAsync();
@@ -96,20 +122,20 @@ namespace Kindergarten.BLL.Services
                 throw new KeyNotFoundException("المستخدم غير موجود.");
 
             var emailBody = $@"
-        <html dir='rtl'>
-        <body style='font-family: Tahoma, sans-serif; background-color: #f9f9f9; padding: 20px;'>
-            <div style='background-color: #fff; padding: 20px; border-radius: 10px; border: 1px solid #ddd;'>
-                <h2 style='color: #2d89ef;'>طلب مراجعة بيانات موظف جديد</h2>
-                <p>قام الموظف التالي باستكمال بياناته الشخصية ويحتاج إلى مراجعة وموافقة الإدارة:</p>
-                <ul style='line-height: 1.8;'>
-                    <li><strong>الاسم:</strong> {user.UserName}</li>
-                    <li><strong>البريد الإلكتروني:</strong> {user.Email}</li>
-                    <li><strong>رقم الهاتف:</strong> {user.PhoneNumber}</li>
-                </ul>
-                <p>يرجى مراجعة حسابه من لوحة التحكم وتفعيله إذا كانت البيانات صحيحة.</p>
-            </div>
-        </body>
-        </html>";
+                <html dir='rtl'>
+                <body style='font-family: Tahoma, sans-serif; background-color: #f9f9f9; padding: 20px;'>
+                    <div style='background-color: #fff; padding: 20px; border-radius: 10px; border: 1px solid #ddd;'>
+                        <h2 style='color: #2d89ef;'>طلب مراجعة بيانات موظف جديد</h2>
+                        <p>قام الموظف التالي باستكمال بياناته الشخصية ويحتاج إلى مراجعة وموافقة الإدارة:</p>
+                        <ul style='line-height: 1.8;'>
+                            <li><strong>الاسم:</strong> {user.UserName}</li>
+                            <li><strong>البريد الإلكتروني:</strong> {user.Email}</li>
+                            <li><strong>رقم الهاتف:</strong> {user.PhoneNumber}</li>
+                        </ul>
+                        <p>يرجى مراجعة حسابه من لوحة التحكم وتفعيله إذا كانت البيانات صحيحة.</p>
+                    </div>
+                </body>
+                </html>";
 
             await _emailService.SendEmailAsync(adminEmail, "طلب مراجعة موظف جديد", emailBody);
 
@@ -188,7 +214,8 @@ namespace Kindergarten.BLL.Services
                 PerformedByUserId = reviewedById,
                 PerformedByUserName = reviewedByUserName,
                 OldValues = oldValuesJson,
-                NewValues = newValuesJson
+                NewValues = newValuesJson,
+                UserComment = dto.RejectionReason
             });
 
             // إرسال البريد الإلكتروني (الكود الحالي)

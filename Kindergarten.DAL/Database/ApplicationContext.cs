@@ -21,7 +21,11 @@ namespace Kindergarten.DAL.Database
         public DbSet<SecuredRoute> SecuredRoutes { get; set; }
         public DbSet<RoleSecuredRoute> RoleSecuredRoutes { get; set; }
         public DbSet<ActivityLog> ActivityLogs { get; set; }
+        #endregion
 
+
+        #region OTP
+        public DbSet<Otp> Otp { get; set; }
         #endregion
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
