@@ -24,6 +24,7 @@ var logger = LogManager.Setup().LoadConfigurationFromAppSettings()
 
 try
 {
+
     var builder = WebApplication.CreateBuilder(args);
 
     #region Logger
