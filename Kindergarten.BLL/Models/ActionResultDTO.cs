@@ -1,9 +1,0 @@
-﻿namespace Kindergarten.BLL.Models
-{
-    public class ActionResultDTO<T>
-    {
-        public bool Success { get; set; }
-        public string Message { get; set; }
-        public T? Data { get; set; }
-    }
-}

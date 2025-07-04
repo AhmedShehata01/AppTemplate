@@ -1,6 +1,0 @@
-@Kindergarten.API_HostAddress = http://localhost:5231
-
-GET {{Kindergarten.API_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###
