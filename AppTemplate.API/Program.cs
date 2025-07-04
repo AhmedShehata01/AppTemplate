@@ -27,6 +27,9 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
 
+
+
+
     #region Logger
     // NLog : setup NLog for dependency Injection
     builder.Logging.ClearProviders();
