@@ -24,11 +24,7 @@ var logger = LogManager.Setup().LoadConfigurationFromAppSettings()
 
 try
 {
-
     var builder = WebApplication.CreateBuilder(args);
-
-
-
 
     #region Logger
     // NLog : setup NLog for dependency Injection
@@ -110,7 +106,7 @@ try
     builder.Services.AddSwaggerGen(setup =>
     {
 
-        setup.SwaggerDoc("v1", new OpenApiInfo { Title = "KG API", Version = "v1" });
+        setup.SwaggerDoc("v1", new OpenApiInfo { Title = "AppTemplate API", Version = "v1" });
 
         // Include 'SecurityScheme' to use JWT Authentication
         var jwtSecurityScheme = new OpenApiSecurityScheme
