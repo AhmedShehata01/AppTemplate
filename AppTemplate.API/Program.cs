@@ -22,6 +22,8 @@ using NLog.Web;
 var logger = LogManager.Setup().LoadConfigurationFromAppSettings()
 .GetCurrentClassLogger();
 
+
+
 try
 {
 
