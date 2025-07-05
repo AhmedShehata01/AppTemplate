@@ -314,6 +314,7 @@ namespace AppTemplate.BLL.Services
             }
 
             user.IsFirstLogin = false;
+            user.IsAgree = true;
             await _userManager.UpdateAsync(user);
 
             var roles = await _userManager.GetRolesAsync(user) ?? new List<string>();

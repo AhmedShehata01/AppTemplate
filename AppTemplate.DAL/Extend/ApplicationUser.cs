@@ -26,7 +26,6 @@ namespace AppTemplate.DAL.Extend
 
         public bool IsFirstLogin { get; set; } = false;
 
-        public UserBasicProfile? BasicProfile { get; set; }
 
     }
 }

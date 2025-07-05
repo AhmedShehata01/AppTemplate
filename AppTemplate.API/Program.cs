@@ -19,9 +19,9 @@ using Microsoft.OpenApi.Models;
 using NLog;
 using NLog.Web;
 
+
 var logger = LogManager.Setup().LoadConfigurationFromAppSettings()
 .GetCurrentClassLogger();
-
 
 
 try
@@ -185,7 +185,6 @@ try
     builder.Services.AddScoped<IAuthService, AuthService>();
 
     builder.Services.AddScoped<IEmailService, EmailService>();
-    builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 
 
 

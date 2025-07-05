@@ -2,7 +2,6 @@
 using AppTemplate.BLL.Models.DRBRADTO;
 using AppTemplate.BLL.Models.RoleManagementDTO;
 using AppTemplate.BLL.Models.UserManagementDTO;
-using AppTemplate.BLL.Models.UserProfileDTO;
 using AppTemplate.DAL.Entity;
 using AppTemplate.DAL.Entity.DRBRA;
 using AppTemplate.DAL.Extend;
@@ -91,19 +90,6 @@ namespace AppTemplate.BLL.Mapper
                 .ForMember(dest => dest.Roles, opt => opt.MapFrom(src => src.RoleSecuredRoutes.Select(r => r.Role.Name)));
 
 
-            #endregion
-
-            #region Mapping for User Profile
-            CreateMap<CompleteBasicProfileDTO, UserBasicProfile>()
-                .ForMember(dest => dest.UserId, opt => opt.Ignore()) // نعطيها يدويًا
-                .ForMember(dest => dest.Status, opt => opt.Ignore()) // نعطيها يدويًا
-                .ForMember(dest => dest.SubmittedAt, opt => opt.Ignore()); // نعطيها يدويًا
-
-            // العكس من الـ Entity إلى DTO
-            CreateMap<UserBasicProfile, CompleteBasicProfileDTO>();
-            CreateMap<GetUsersProfilesDTO, UserBasicProfile>().ReverseMap();
-
-            CreateMap<ApplicationUser, UserListDTO>();
             #endregion
 
             #region Sidebar Items and sub items 

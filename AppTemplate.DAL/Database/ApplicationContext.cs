@@ -10,7 +10,6 @@ namespace AppTemplate.DAL.Database
     {
         public ApplicationContext(DbContextOptions<ApplicationContext> ops) : base(ops) { }
 
-        public DbSet<UserBasicProfile> UserBasicProfiles { get; set; }
         public DbSet<SidebarItem> SidebarItem { get; set; }
 
 
@@ -31,13 +30,6 @@ namespace AppTemplate.DAL.Database
             modelBuilder.Entity<RoleSecuredRoute>()
             .HasIndex(r => new { r.SecuredRouteId, r.RoleId })
             .IsUnique();
-
-            // ربط علاقة One-to-One بين ApplicationUser و UserBasicProfile
-            modelBuilder.Entity<ApplicationUser>()
-                .HasOne(u => u.BasicProfile)
-                .WithOne(p => p.User)
-                .HasForeignKey<UserBasicProfile>(p => p.UserId)
-                .OnDelete(DeleteBehavior.Cascade); // لو اتحذف المستخدم، يتم حذف البروفايل كمان
 
             // إضافة Conversion للـ Enum ActionType لو هنسجله كـ String
             modelBuilder.Entity<ActivityLog>()
