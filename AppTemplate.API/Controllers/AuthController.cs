@@ -170,9 +170,6 @@ namespace AppTemplate.API.Controllers
             });
         }
 
-
-
-
         #endregion
 
         #region Password Management
