@@ -11,6 +11,7 @@ namespace AppTemplate.DAL.Database
         public ApplicationContext(DbContextOptions<ApplicationContext> ops) : base(ops) { }
 
         public DbSet<SidebarItem> SidebarItem { get; set; }
+        public DbSet<UserSession> UserSessions { get; set; }
 
 
 

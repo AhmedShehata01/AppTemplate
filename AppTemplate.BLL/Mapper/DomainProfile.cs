@@ -1,4 +1,5 @@
-﻿using AppTemplate.BLL.Models.ActivityLogDTO;
+﻿using AppTemplate.BLL.Models;
+using AppTemplate.BLL.Models.ActivityLogDTO;
 using AppTemplate.BLL.Models.DRBRADTO;
 using AppTemplate.BLL.Models.RoleManagementDTO;
 using AppTemplate.BLL.Models.UserManagementDTO;
@@ -127,6 +128,24 @@ namespace AppTemplate.BLL.Mapper
             CreateMap<Otp, OtpDTO>();
 
             #endregion
+
+            #region userSession
+
+            CreateMap<UserSession, UserSessionDTO>()
+                .ForMember(dest => dest.Roles, opt => opt.Ignore())
+                .ForMember(dest => dest.Claims, opt => opt.Ignore())
+                .ForMember(dest => dest.UserName, opt => opt.Ignore())
+                .ForMember(dest => dest.IsLoggedOut, opt => opt.MapFrom(src => src.IsLoggedOut))
+                .ForMember(dest => dest.ForceLoggedOut, opt => opt.MapFrom(src => src.ForceLoggedOut))
+                .ForMember(dest => dest.LastActivityAt, opt => opt.MapFrom(src => src.LastActivityAt));
+
+            CreateMap<UserSessionDTO, UserSession>()
+                .ForMember(dest => dest.IsLoggedOut, opt => opt.MapFrom(src => src.IsLoggedOut))
+                .ForMember(dest => dest.ForceLoggedOut, opt => opt.MapFrom(src => src.ForceLoggedOut))
+                .ForMember(dest => dest.LastActivityAt, opt => opt.MapFrom(src => src.LastActivityAt));
+
+            #endregion
+
 
         }
     }

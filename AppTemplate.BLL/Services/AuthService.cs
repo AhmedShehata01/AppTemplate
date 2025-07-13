@@ -18,6 +18,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using AppTemplate.BLL.Models;
+using AppTemplate.BLL.Services.UserSessionServices;
 
 
 namespace AppTemplate.BLL.Services
@@ -34,9 +35,13 @@ namespace AppTemplate.BLL.Services
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly ILogger<AuthService> _logger;
         private readonly IOtpService _otpService;
+        private readonly IUserSessionService _userSessionService;
+
+
         private readonly string _googleClientId;
         private readonly string _facebookAppId;
         private readonly string _facebookAppSecret;
+        private readonly int _jwtDurationMinutes;
         #endregion
 
         #region Ctor
@@ -49,7 +54,8 @@ namespace AppTemplate.BLL.Services
             IMemoryCache cache,
             IHttpContextAccessor httpContextAccessor,
             ILogger<AuthService> logger,
-            IOtpService otpService)
+            IOtpService otpService,
+            IUserSessionService userSessionService)
         {
             _userManager = userManager;
             _config = config;
@@ -60,9 +66,13 @@ namespace AppTemplate.BLL.Services
             _httpContextAccessor = httpContextAccessor;
             _logger = logger;
             _otpService = otpService;
+            _userSessionService = userSessionService;
             _googleClientId = _config["Google:ClientId"];
             _facebookAppId = _config["Facebook:AppId"];
             _facebookAppSecret = _config["Facebook:AppSecret"];
+
+            // نقرأ الإعدادات مرة واحدة فقط
+            _jwtDurationMinutes = config.GetValue<int>("JWT:DurationInMinutes");
         }
         #endregion
 
@@ -207,9 +217,14 @@ namespace AppTemplate.BLL.Services
                 };
             }
 
-            var verifyResult = await _otpService.VerifyOtpAsync(
-                new VerifyOtpDTO { Email = otpDto.Email, Code = otpDto.Code }
-            );
+            var verifyResult = await _otpService.VerifyOtpAsync(new VerifyOtpDTO
+            {
+                Email = otpDto.Email,
+                Code = otpDto.Code,
+                ConnectionId = otpDto.ConnectionId,
+                Purpose = otpDto.Purpose
+            });
+
             if (!verifyResult.Success)
             {
                 return new ActionResultDTO<string>
@@ -232,6 +247,31 @@ namespace AppTemplate.BLL.Services
             var roles = await _userManager.GetRolesAsync(user);
             var jwtToken = await GenerateJwtTokenAsync(user, roles);
 
+            // ✅ أرسل إشارة ForceLogout للجلسة القديمة (لو موجودة) قبل حذفها
+            await _userSessionService.ForceLogoutAsync(user.Id);
+
+            // ✅ حذف الجلسة القديمة من الـ DB والكاش
+            await _userSessionService.RemoveSessionAsync(user.Id);
+
+            // ✅ تجهيز الجلسة الجديدة وحفظها
+            var sessionDto = new UserSessionDTO
+            {
+                UserId = user.Id,
+                Token = jwtToken,
+                ExpireAt = DateTime.UtcNow.AddMinutes(_jwtDurationMinutes),
+                ConnectionId = string.IsNullOrWhiteSpace(otpDto.ConnectionId) ? "TEMP-PLACEHOLDER" : otpDto.ConnectionId,
+                CreatedAt = DateTime.UtcNow,
+                LastActivityAt = DateTime.UtcNow,
+                UserName = user.UserName,
+                Roles = roles.ToList(),
+                Claims = new Dictionary<string, string>()
+            };
+
+            var userClaims = await _userManager.GetClaimsAsync(user);
+            sessionDto.Claims = userClaims.ToDictionary(c => c.Type, c => c.Value);
+
+            await _userSessionService.SaveUserSessionAsync(sessionDto);
+
             await _activityLogService.CreateAsync(new ActivityLogCreateDTO
             {
                 EntityName = nameof(ApplicationUser),
@@ -249,9 +289,6 @@ namespace AppTemplate.BLL.Services
                 Data = jwtToken
             };
         }
-
-
-
 
 
         #endregion
@@ -603,6 +640,64 @@ namespace AppTemplate.BLL.Services
             var token = tokenHandler.CreateToken(tokenDescriptor);
             return tokenHandler.WriteToken(token);
         }
+
+
+        public async Task<ActionResultDTO<bool>> LogoutAsync(string userId)
+        {
+            try
+            {
+                await _userSessionService.RemoveSessionAsync(userId);
+
+                return new ActionResultDTO<bool>
+                {
+                    Success = true,
+                    Message = "Logged out successfully.",
+                    Data = true
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error while logging out user {userId}");
+
+                return new ActionResultDTO<bool>
+                {
+                    Success = false,
+                    Message = "An error occurred during logout.",
+                    Data = false
+                };
+            }
+        }
+
+
+        public async Task<ActionResultDTO<bool>> ForceLogoutAsync(string userId)
+        {
+            try
+            {
+                await _userSessionService.RemoveSessionAsync(userId);
+
+                // لو عندك SignalR أو Notification تقدر تحطه هنا
+                // await _notificationService.NotifyUserForceLoggedOut(userId);
+
+                return new ActionResultDTO<bool>
+                {
+                    Success = true,
+                    Message = "User force logged out successfully.",
+                    Data = true
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error while force logging out user {userId}");
+
+                return new ActionResultDTO<bool>
+                {
+                    Success = false,
+                    Message = "An error occurred during force logout.",
+                    Data = false
+                };
+            }
+        }
+
         #endregion
 
         #region External Login
@@ -737,6 +832,8 @@ namespace AppTemplate.BLL.Services
         Task<string> GenerateJwtTokenAsync(ApplicationUser user, IList<string> roles);
         Task<string> ChangePasswordFirstTimeAsync(string userId, ChangePasswordFirstTimeDto model);
 
+        Task<ActionResultDTO<bool>> LogoutAsync(string userId);
+        Task<ActionResultDTO<bool>> ForceLogoutAsync(string userId);
         #endregion
 
         #region External Login

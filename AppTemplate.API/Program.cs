@@ -1,12 +1,14 @@
 ﻿using System.Security.Claims;
 using System.Text;
 using AppTemplate.BLL.Helper;
+using AppTemplate.BLL.Hubs;
 using AppTemplate.BLL.Mapper;
 using AppTemplate.BLL.Middleware;
 using AppTemplate.BLL.Services;
 using AppTemplate.BLL.Services.AppSecurity;
 using AppTemplate.BLL.Services.IdentityServices;
 using AppTemplate.BLL.Services.SendEmail;
+using AppTemplate.BLL.Services.UserSessionServices;
 using AppTemplate.DAL.Database;
 using AppTemplate.DAL.Extend;
 using AppTemplate.DAL.Repository;
@@ -166,11 +168,33 @@ try
     #endregion
 
 
+    #region Redis
+    builder.Services.AddStackExchangeRedisCache(options =>
+    {
+        options.Configuration = builder.Configuration["Redis:ConnectionString"];
+    });
+    #endregion
+
+    #region SignalR + Redis Backplane
+    builder.Services.AddSignalR()
+        .AddStackExchangeRedis(builder.Configuration["Redis:ConnectionString"]);
+    #endregion
+
 
 
     #region CORS
 
-    builder.Services.AddCors();
+    builder.Services.AddCors(options =>
+    {
+        options.AddPolicy("AllowAngularDev", builder =>
+        {
+            builder
+                .WithOrigins("http://localhost:4200") // your frontend origin
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .AllowCredentials();
+        });
+    });
 
     #endregion
 
@@ -197,6 +221,14 @@ try
     builder.Services.AddScoped<ISidebarService, SidebarService>();
     builder.Services.AddScoped<IActivityLogService, ActivityLogService>();
     builder.Services.AddScoped<IOtpService, OtpService>();
+
+
+    #region uesr session services
+    builder.Services.AddScoped<IUserSessionRepository, UserSessionRepository>();
+    builder.Services.AddScoped<IUserSessionCacheService, UserSessionCacheService>();
+    builder.Services.AddScoped<IUserSessionService, UserSessionService>();
+    #endregion
+
     #endregion
 
     #region JWT Configuration
@@ -210,6 +242,8 @@ try
     })
     .AddJwtBearer(options =>
     {
+        options.RequireHttpsMetadata = false;
+        options.SaveToken = true;
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -222,11 +256,28 @@ try
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JWT:Key"])),
             ClockSkew = TimeSpan.Zero,
 
-            // هنا الحل 👇👇👇
-            NameClaimType = ClaimTypes.Name, // default, but override if needed
+            NameClaimType = ClaimTypes.Name,
             RoleClaimType = ClaimTypes.Role
         };
+
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                var path = context.HttpContext.Request.Path;
+
+                // ✅ تأكد إن ده نفس المسار عندك بالظبط
+                if (!string.IsNullOrEmpty(accessToken) &&
+                    path.StartsWithSegments("/presenceHub"))
+                {
+                    context.Token = accessToken;
+                }
+                return Task.CompletedTask;
+            }
+        };
     });
+
 
 
     #endregion
@@ -259,21 +310,18 @@ try
     }
 
     app.UseMiddleware<ExceptionMiddleware>();
-
     app.UseHttpsRedirection();
 
-    app.UseCors(options => options
-        //.WithOrigins("https://localhost:7185/", "", "")
-        .AllowAnyOrigin()
-        .AllowAnyMethod()
-        .AllowAnyHeader());
+    // Use the named CORS policy here
+    app.UseCors("AllowAngularDev");
 
     app.UseStaticFiles();
-
     app.UseAuthentication();
     app.UseAuthorization();
+    app.UseMiddleware<SingleLoginMiddleware>();
 
     app.MapControllers();
+    app.MapHub<PresenceHub>("/presenceHub");
 
     app.Run();
 }

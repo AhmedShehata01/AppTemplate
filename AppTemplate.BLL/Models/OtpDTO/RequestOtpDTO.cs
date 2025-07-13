@@ -21,4 +21,5 @@ public class VerifyOtpDTO
     public string Email { get; set; } = null!;
     public string Code { get; set; } = null!;
     public OtpPurpose Purpose { get; set; } = OtpPurpose.Login;
+    public string? ConnectionId { get; set; } // ✅ جديد
 }
